@@ -81,7 +81,10 @@ def _call_alpha_amount(call: dict) -> int | None:
         return None
     for arg in call.get("call_args", []):
         if arg.get("name") == "alpha_amount":
-            return int(arg["value"])
+            amount = int(arg["value"])
+            # u64::MAX means "move all my stake": not the amount actually moved (and too big
+            # for an SQLite integer). The event's TAO amount still records what moved.
+            return None if amount >= 2**63 else amount
     return None
 
 
