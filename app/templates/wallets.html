@@ -2,7 +2,10 @@
 {% import "_macros.html" as m with context %}
 {% block title %}Wallets{% endblock %}
 {% block content %}
-<h1>Wallets</h1>
+<div class="page-head">
+  <h1>Wallets</h1>
+  <button class="primary" data-dialog="add-wallet">+ Register wallet</button>
+</div>
 
 <form method="get" class="filters card">
   <label>Owner
@@ -35,7 +38,7 @@
 
 <div class="table-wrap card">
 <table class="data">
-  <thead><tr><th>Name</th><th>Address</th><th>Owner</th><th>Purpose</th><th class="num">Free τ</th><th class="num">Staked τ</th><th class="num">Total τ</th><th class="num">Unapproved</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Address</th><th>Owner</th><th>Purpose</th><th class="num">Free <span class="unit">τ</span></th><th class="num">Staked <span class="unit">τ</span></th><th class="num">Total <span class="unit">τ</span></th><th class="num">Unapproved</th><th></th></tr></thead>
   <tbody>
   {% for w in wallets %}
     <tr>
@@ -49,23 +52,29 @@
       <td class="num">{% set n = unapproved.get(w.address, 0) %}{% if n %}<a class="badge warn" href="/transfers?wallet={{ w.id }}&status=unapproved">{{ n }}</a>{% else %}<span class="muted">0</span>{% endif %}</td>
       <td class="nowrap small"><a href="/graph?address={{ w.address }}">graph</a></td>
     </tr>
-  {% else %}<tr><td colspan="9" class="muted center">No wallets match.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="9" class="muted center">{% if filters.q or filters.owner or filters.min_balance or filters.max_balance %}No wallets match.{% else %}No wallets yet. <button class="link" data-dialog="add-wallet">Register the first one</button>{% endif %}</td></tr>{% endfor %}
   </tbody>
 </table>
 </div>
 
-<details class="card" {{ 'open' if not wallets and not filters.q }}>
-  <summary><b>+ Register a wallet</b></summary>
-  <form method="post" action="/wallets" class="stack narrow">
-    <label>Name <input name="name" required maxlength="128" placeholder="e.g. Treasury cold"></label>
+<dialog id="add-wallet" class="modal" aria-labelledby="add-wallet-title">
+  <form method="post" action="/wallets" class="stack">
+    <div class="modal-head">
+      <h2 id="add-wallet-title">Register a wallet</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">×</button>
+    </div>
+    <label>Name <input name="name" required maxlength="128" placeholder="e.g. Treasury cold" autofocus></label>
     <label>Coldkey address (SS58) <input name="address" required class="mono" placeholder="5..."></label>
-    <label>Usage purpose <textarea name="purpose" rows="2" placeholder="What is this wallet used for?"></textarea></label>
+    <label>Usage purpose <textarea name="purpose" rows="3" placeholder="What is this wallet used for?"></textarea></label>
     {% if user.is_admin %}
     <label>Owner
       <select name="owner_id">{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == user.id }}>{{ u.username }}</option>{% endfor %}</select></label>
     {% endif %}
-    <button class="primary">Add wallet</button>
     <p class="small muted">The chain watcher records transfers from now on.{% if taostats_enabled %} Use “Import history” on the wallet page to backfill older ones from Taostats.{% endif %}</p>
+    <div class="modal-foot">
+      <button type="button" data-close>Cancel</button>
+      <button class="primary">Add wallet</button>
+    </div>
   </form>
-</details>
+</dialog>
 {% endblock %}

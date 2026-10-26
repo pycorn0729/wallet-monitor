@@ -18,7 +18,7 @@
   <section class="card">
     <h2>By owner</h2>
     <table class="data">
-      <thead><tr><th>Owner</th><th class="num">Wallets</th><th class="num">Free τ</th><th class="num">Staked τ</th><th class="num">Total τ</th><th class="num">Unapproved</th></tr></thead>
+      <thead><tr><th>Owner</th><th class="num">Wallets</th><th class="num">Free <span class="unit">τ</span></th><th class="num">Staked <span class="unit">τ</span></th><th class="num">Total <span class="unit">τ</span></th><th class="num">Unapproved</th></tr></thead>
       <tbody>
       {% for row in per_owner %}
         <tr>
@@ -37,7 +37,7 @@
   <section class="card">
     <h2>Largest wallets</h2>
     <table class="data">
-      <thead><tr><th>Wallet</th><th>Owner</th><th class="num">Total τ</th><th class="num">Unappr.</th></tr></thead>
+      <thead><tr><th>Wallet</th><th>Owner</th><th class="num">Total <span class="unit">τ</span></th><th class="num">Unappr.</th></tr></thead>
       <tbody>
       {% for w in top_wallets %}
         <tr><td><a href="/wallets/{{ w.id }}">{{ w.name }}</a> {{ m.ts(w.address) }}</td><td>{{ w.owner.username }}</td>

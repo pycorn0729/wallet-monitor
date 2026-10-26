@@ -72,7 +72,11 @@
     $("graph-msg")?.remove();
     if (address) expanded.add(address);
     merge(data);
-    if (!data.edges.length) panelMsg(`No ${kinds.join(" / ")} history found${address ? " for " + short(address) : ""} (${data.source}).`);
+    if (!data.edges.length) {
+      const what = kinds.map((k) => (k === "transfer" ? "TAO" : "alpha")).join(" or ");
+      const where = data.source === "taostats" ? "on Taostats" : "in the app database yet";
+      panelMsg(`No ${what} transfers found${address ? " for " + short(address) : ""} ${where}.`);
+    }
     if (address) network.focus(address, { scale: 1, animation: true });
   }
 

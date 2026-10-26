@@ -19,6 +19,7 @@
 </section>
 
 <div class="actions">
+  {% if can_manage %}<button class="primary" data-dialog="edit-wallet">✎ Edit wallet</button>{% endif %}
   <form method="post" action="/wallets/{{ wallet.id }}/refresh" class="inline"><button>↻ Refresh balance</button></form>
   {% if can_manage and taostats_enabled %}
   <form method="post" action="/wallets/{{ wallet.id }}/import" class="inline"><button title="Backfill past transfers from Taostats">⇣ Import history</button></form>
@@ -44,20 +45,26 @@
 </section>
 
 {% if can_manage %}
-<details class="card">
-  <summary><b>Edit / remove wallet</b></summary>
-  <form method="post" action="/wallets/{{ wallet.id }}/edit" class="stack narrow">
-    <label>Name <input name="name" value="{{ wallet.name }}" required maxlength="128"></label>
+<dialog id="edit-wallet" class="modal" aria-labelledby="edit-wallet-title">
+  <div class="modal-head">
+    <h2 id="edit-wallet-title">Edit wallet</h2>
+    <button type="button" class="icon-btn" data-close aria-label="Close">×</button>
+  </div>
+  <form method="post" action="/wallets/{{ wallet.id }}/edit" class="stack">
+    <label>Name <input name="name" value="{{ wallet.name }}" required maxlength="128" autofocus></label>
     <label>Usage purpose <textarea name="purpose" rows="3">{{ wallet.purpose }}</textarea></label>
     {% if user.is_admin %}
     <label>Owner <select name="owner_id">{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == wallet.owner_id }}>{{ u.username }}</option>{% endfor %}</select></label>
     {% endif %}
-    <button class="primary">Save</button>
+    <div class="modal-foot">
+      <button type="button" data-close>Cancel</button>
+      <button class="primary">Save changes</button>
+    </div>
   </form>
   <form method="post" action="/wallets/{{ wallet.id }}/delete" onsubmit="return confirm('Remove this wallet from monitoring?')" class="danger-zone">
     <button class="danger">Remove wallet</button>
     <span class="small muted">Stored transfers are kept; new ones stop being recorded.</span>
   </form>
-</details>
+</dialog>
 {% endif %}
 {% endblock %}

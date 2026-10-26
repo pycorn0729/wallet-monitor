@@ -4,25 +4,33 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Wallet Monitor{% endblock %} · τ Wallet Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/static/app.css">
   {% block head %}{% endblock %}
 </head>
 <body>
 {% if user %}
+{% set path = request.url.path %}
+{% macro navlink(href, label) -%}
+  <a href="{{ href }}" class="{{ 'active' if (path == href or (href != '/' and path.startswith(href))) }}">{{ label }}{{ caller() if caller }}</a>
+{%- endmacro %}
 <header class="topbar">
-  <a class="brand" href="/">τ Wallet Monitor</a>
+  <a class="brand" href="/"><span class="logo">τ</span><span>Wallet Monitor</span></a>
   <nav>
-    <a href="/">Dashboard</a>
-    <a href="/wallets">Wallets</a>
-    <a href="/transfers">Transfers
-      {% if nav_unapproved %}<span class="badge warn" title="Unapproved transfers">{{ nav_unapproved }}</span>{% endif %}</a>
-    <a href="/graph">Graph</a>
-    {% if user.is_admin %}<a href="/users">Users
-      {% if nav_pending_users %}<span class="badge warn" title="Registrations waiting for approval">{{ nav_pending_users }}</span>{% endif %}</a>{% endif %}
+    {{ navlink('/', 'Dashboard') }}
+    {{ navlink('/wallets', 'Wallets') }}
+    {% call navlink('/transfers', 'Transfers') %}{% if nav_unapproved %}<span class="badge warn" title="Unapproved transfers">{{ nav_unapproved }}</span>{% endif %}{% endcall %}
+    {{ navlink('/graph', 'Graph') }}
+    {% if user.is_admin %}{% call navlink('/users', 'Users') %}{% if nav_pending_users %}<span class="badge warn" title="Registrations waiting for approval">{{ nav_pending_users }}</span>{% endif %}{% endcall %}{% endif %}
   </nav>
   <div class="me">
-    <a href="/account">{{ user.username }}</a> <span class="muted small">({{ user.role_label }})</span>
-    <form method="post" action="/logout" class="inline"><button class="link">Log out</button></form>
+    <a href="/account" class="who" title="My account">
+      <span class="avatar">{{ user.username[:1]|upper }}</span>
+      <span class="who-text"><b>{{ user.username }}</b><span class="role">{{ user.role_label }}</span></span>
+    </a>
+    <form method="post" action="/logout" class="inline"><button class="ghost small">Log out</button></form>
   </div>
 </header>
 {% endif %}
@@ -35,6 +43,7 @@
   {% if notice %}<div class="toast success" role="status">{{ notice }}</div>{% endif %}
 </div>
 <script src="/static/toast.js"></script>
+<script src="/static/dialog.js"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

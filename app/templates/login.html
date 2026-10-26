@@ -3,7 +3,7 @@
 {% block main_class %}login-wrap{% endblock %}
 {% block content %}
 <form method="post" action="/login" class="card login">
-  <h1>τ Wallet Monitor</h1>
+  <div class="login-head"><span class="logo lg">τ</span><h1>Welcome back</h1><p class="muted small">Sign in to τ Wallet Monitor</p></div>
   <input type="hidden" name="next" value="{{ next }}">
   <label>Username <input name="username" autocomplete="username" required autofocus></label>
   <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
