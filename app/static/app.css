@@ -284,8 +284,9 @@ body:not(:has(.topbar)) #toasts { top: 18px; }
 
 /* ───────────── Graph ───────────── */
 .graph-layout { display: grid; grid-template-columns: 1fr 380px; gap: 1.25rem; }
-#graph { height: 74vh; padding: 0; position: relative; overflow: hidden; background: var(--surface) radial-gradient(var(--border) 1px, transparent 1px) 0 0 / 22px 22px; }
-#graph-msg { padding: 3rem 2rem; }
+.graph-wrap { position: relative; height: 74vh; padding: 0; overflow: hidden; background: var(--surface) radial-gradient(var(--border) 1px, transparent 1px) 0 0 / 22px 22px; }
+#graph { position: absolute; inset: 0; }
+#graph-msg { position: absolute; top: 0; left: 0; right: 0; padding: 3rem 2rem; pointer-events: none; }
 #panel { max-height: 74vh; overflow-y: auto; }
 #panel h3 { font-size: 1.05rem; }
 .legend { margin-left: 1rem; display: inline-flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
@@ -326,3 +327,37 @@ dialog.modal::backdrop { background: rgba(8, 11, 20, 0.45); backdrop-filter: blu
 .lname::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .lg.lab { background: var(--node-label); border: 1px solid var(--node-label-border); }
 .coverage { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; align-items: center; margin: -0.25rem 0 1rem; }
+
+/* ───────────── Loading indicators ───────────── */
+.spinner {
+  display: inline-block; width: 18px; height: 18px; border-radius: 50%; flex: none;
+  border: 2.5px solid color-mix(in srgb, var(--accent) 22%, transparent); border-top-color: var(--accent);
+  animation: spin 0.75s linear infinite;
+}
+.spinner.lg { width: 34px; height: 34px; border-width: 3.5px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#busy-bar {
+  position: fixed; top: 0; left: 0; height: 3px; width: 0; z-index: 2000; opacity: 0; pointer-events: none;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)); box-shadow: 0 0 10px var(--accent);
+}
+#busy-bar.on { opacity: 1; animation: busy-progress 8s cubic-bezier(.1,.7,.2,1) forwards; }
+@keyframes busy-progress { 0% { width: 0; } 30% { width: 55%; } 100% { width: 92%; } }
+
+#busy-overlay {
+  position: fixed; inset: 0; z-index: 1500; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--bg) 45%, transparent); backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+}
+#busy-overlay[hidden], .graph-busy[hidden] { display: none; }
+.busy-card {
+  display: flex; align-items: center; gap: 0.85rem; padding: 1rem 1.4rem; font-weight: 500;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg);
+}
+
+.graph-busy {
+  position: absolute; inset: 0; z-index: 5; border-radius: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem;
+  color: var(--muted); font-weight: 500; background: color-mix(in srgb, var(--surface) 70%, transparent);
+  backdrop-filter: blur(1.5px); -webkit-backdrop-filter: blur(1.5px);
+}
+button:disabled { opacity: 0.55; cursor: progress; }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 1.5s !important; } }

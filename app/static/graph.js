@@ -65,14 +65,32 @@
     }
   }
 
+  let busy = false;
+  function setBusy(on, address) {
+    busy = on;
+    $("graph-busy-text").textContent = address ? `Loading connections of ${short(address)}…` : "Loading…";
+    $("graph-busy").hidden = !on;
+    $("graph").setAttribute("aria-busy", on ? "true" : "false");
+    for (const b of document.querySelectorAll("#graph-form button, #panel button")) b.disabled = on;
+  }
+
   async function load(address) {
+    if (busy) return;  // one request at a time; the spinner shows one is running
     const kinds = [$("k-transfer").checked && "transfer", $("k-stake").checked && "stake_transfer"].filter(Boolean);
     if (!address) { toast("Pick a wallet or enter an address.", "error"); return; }
     const params = new URLSearchParams({ address, kinds: kinds.join(","), limit: $("limit").value });
-    $("graph-msg") && ($("graph-msg").textContent = "Loading…");
-    const res = await fetch(`/api/graph?${params}`);
-    const data = await res.json();
-    if (!res.ok) { toast(data.detail || "Failed to load graph", "error"); $("graph-msg") && ($("graph-msg").textContent = ""); return; }
+    setBusy(true, address);
+    let res, data;
+    try {
+      res = await fetch(`/api/graph?${params}`);
+      data = await res.json();
+    } catch (err) {
+      toast("Could not reach the server. Please try again.", "error");
+      return;
+    } finally {
+      setBusy(false);
+    }
+    if (!res.ok) { toast(data.detail || "Failed to load graph", "error"); return; }
     $("graph-msg")?.remove();
     expanded.add(address);
     merge(data);
@@ -101,9 +119,30 @@
         ${n.purpose ? `<p class="small">${esc(n.purpose)}</p>` : ""}
         ${n.unapproved ? `<p><a class="badge warn" href="/transfers?wallet=${n.wallet_id}&status=unapproved">${n.unapproved} unapproved</a></p>` : ""}
         <p><a href="/wallets/${n.wallet_id}">Open wallet →</a></p>` : ""}
-      <p><button id="expand">${expanded.has(id) ? "Reload" : "Expand"} connections</button>
-         <a class="small" href="https://taostats.io/account/${esc(n.id)}" target="_blank" rel="noopener">taostats ↗</a></p>`;
-    $("expand").onclick = () => load(id);
+      <p class="actions">
+        ${expanded.has(id)
+          ? `<button id="collapse">⊖ Collapse connections</button><button id="expand" class="ghost">↻ Reload</button>`
+          : `<button id="expand">⊕ Expand connections</button>`}
+        <a class="small" href="https://taostats.io/account/${esc(n.id)}" target="_blank" rel="noopener">taostats ↗</a></p>`;
+    $("expand").onclick = () => load(id).then(() => showNode(id));
+    if ($("collapse")) $("collapse").onclick = () => { collapse(id); showNode(id); };
+  }
+
+  // Undo an expansion: drop the edges only this node's expansion brought in (edges to other
+  // expanded nodes stay, they were loaded by those too), then any node left unconnected.
+  function collapse(id) {
+    expanded.delete(id);
+    const n = raw.nodes.get(id);
+    if (n) { n.center = false; nodes.update(nodeView(n)); }
+    for (const e of [...raw.edges.values()]) {
+      const other = e.from === id ? e.to : e.to === id ? e.from : null;
+      if (other !== null && !expanded.has(other)) { raw.edges.delete(e.id); edges.remove(e.id); }
+    }
+    const linked = new Set();
+    for (const e of raw.edges.values()) { linked.add(e.from); linked.add(e.to); }
+    for (const nid of [...raw.nodes.keys()]) {
+      if (nid !== id && !expanded.has(nid) && !linked.has(nid)) { raw.nodes.delete(nid); nodes.remove(nid); }
+    }
   }
 
   function showEdge(id) {
@@ -131,7 +170,12 @@
   }
 
   network.on("click", (p) => { if (p.nodes.length) showNode(p.nodes[0]); else if (p.edges.length) showEdge(p.edges[0]); });
-  network.on("doubleClick", (p) => { if (p.nodes.length) load(p.nodes[0]); });
+  // Double-click toggles: expand a node, or collapse one that is already expanded.
+  network.on("doubleClick", (p) => {
+    if (!p.nodes.length) return;
+    const id = p.nodes[0];
+    if (expanded.has(id)) { collapse(id); showNode(id); } else load(id).then(() => showNode(id));
+  });
 
   $("graph-form").addEventListener("submit", (ev) => { ev.preventDefault(); load($("address").value.trim()); });
   $("clear").onclick = () => { nodes.clear(); edges.clear(); raw.nodes.clear(); raw.edges.clear(); expanded.clear(); panelMsg("Cleared."); };

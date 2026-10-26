@@ -38,6 +38,8 @@
 <main class="{% block main_class %}container{% endblock %}">
   {% block content %}{% endblock %}
 </main>
+<div id="busy-bar" aria-hidden="true"></div>
+<div id="busy-overlay" hidden role="status" aria-live="polite"><div class="busy-card"><span class="spinner lg" aria-hidden="true"></span><span>Working…</span></div></div>
 <div id="toasts" aria-live="polite">
   {% for f in flashes %}<div class="toast {{ f.category }}" role="{{ 'alert' if f.category == 'error' else 'status' }}">{{ f.message }}</div>{% endfor %}
   {% if error %}<div class="toast error" role="alert">{{ error }}</div>{% endif %}
@@ -45,6 +47,7 @@
 </div>
 <script src="/static/toast.js"></script>
 <script src="/static/dialog.js"></script>
+<script src="/static/busy.js"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
