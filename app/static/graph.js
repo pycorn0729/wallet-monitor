@@ -11,7 +11,8 @@
     nodes: { font: { size: 13 } },
   });
 
-  const fmt = (v, d = 4) => (v == null ? "–" : Number(v).toLocaleString(undefined, { maximumFractionDigits: d }));
+  // Amounts always show exactly two decimals, matching the server-side formatting.
+  const fmt = (v) => (v == null ? "–" : Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const copyBtn = (a) => `<button type="button" class="copy-btn" data-copy="${esc(a)}" title="Copy ${esc(a)}" aria-label="Copy address">⧉</button>`;
@@ -23,7 +24,7 @@
     if (n.unapproved) label += `\n⚠ ${n.unapproved} unapproved`;
     return {
       id: n.id, label,
-      title: n.registered ? `${n.label} (${n.owner})\n${n.id}\nTotal ${fmt(n.total, 2)} τ`
+      title: n.registered ? `${n.label} (${n.owner})\n${n.id}\nTotal ${fmt(n.total)} τ`
         : n.labeled ? `${n.label}${n.note ? "\n" + n.note : ""}\n${n.id}` : n.id,
       shape: n.registered || n.labeled ? "box" : "dot",
       size: n.registered || n.labeled ? undefined : 10,
@@ -40,7 +41,7 @@
   function edgeView(e) {
     const alpha = e.kind === "stake_transfer";
     const width = 1 + Math.min(8, Math.log10(1 + e.amount) * 2);
-    let label = alpha ? `${fmt(e.alpha, 2)} α` : `${fmt(e.amount, 2)} τ`;
+    let label = alpha ? `${fmt(e.alpha)} α` : `${fmt(e.amount)} τ`;
     if (e.count > 1) label += ` ×${e.count}`;
     if (e.unapproved) label += `  ⚠${e.unapproved}`;
     return {
@@ -118,7 +119,7 @@
       ${n.note ? `<p class="small">${esc(n.note)}</p>` : ""}
       ${canLabel && !n.registered ? `<p><button class="small" id="label-btn" data-dialog="label-dialog"
           data-address="${esc(n.id)}" data-label="${esc(n.tag || "")}" data-note="${esc(n.note || "")}">🏷 ${n.labeled ? "Edit label" : "Label this address"}</button></p>` : ""}
-      ${n.registered ? `<p>Owner <b>${esc(n.owner)}</b> · total <b>${fmt(n.total, 4)} τ</b></p>
+      ${n.registered ? `<p>Owner <b>${esc(n.owner)}</b> · total <b>${fmt(n.total)} τ</b></p>
         ${n.purpose ? `<p class="small">${esc(n.purpose)}</p>` : ""}
         ${n.unapproved ? `<p><a class="badge warn" href="/transfers?wallet=${n.wallet_id}&status=unapproved">${n.unapproved} unapproved</a></p>` : ""}
         <p><a href="/wallets/${n.wallet_id}">Open wallet →</a></p>` : ""}

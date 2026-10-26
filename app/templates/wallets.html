@@ -31,9 +31,9 @@
 </form>
 
 <section class="stats">
-  <div class="stat big"><div class="label">Total of {{ wallets|length }} listed wallet{{ '' if wallets|length == 1 else 's' }}</div><div class="value">{{ filtered_total|tao(2) }} τ</div></div>
-  <div class="stat"><div class="label">Free</div><div class="value">{{ filtered_free|tao(2) }} τ</div></div>
-  <div class="stat"><div class="label">Staked</div><div class="value">{{ filtered_staked|tao(2) }} τ</div></div>
+  <div class="stat big"><div class="label">Total of {{ wallets|length }} listed wallet{{ '' if wallets|length == 1 else 's' }}</div><div class="value">{{ filtered_total|tao }} τ</div></div>
+  <div class="stat"><div class="label">Free</div><div class="value">{{ filtered_free|tao }} τ</div></div>
+  <div class="stat"><div class="label">Staked</div><div class="value">{{ filtered_staked|tao }} τ</div></div>
 </section>
 
 <div class="table-wrap card">

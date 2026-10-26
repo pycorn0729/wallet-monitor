@@ -32,7 +32,7 @@ def _context(request: Request) -> dict:
 templates = Jinja2Templates(directory=str(templates_dir), context_processors=[_context])
 
 
-def fmt_tao(value, digits: int = 4) -> str:
+def fmt_tao(value, digits: int = 2) -> str:
     if value is None:
         return "–"
     return f"{value:,.{digits}f}"

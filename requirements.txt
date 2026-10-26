@@ -7,3 +7,4 @@ itsdangerous>=2.2
 httpx>=0.27
 pydantic-settings>=2.4
 async-substrate-interface>=1.5
+psycopg[binary]>=3.2

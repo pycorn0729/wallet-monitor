@@ -9,6 +9,8 @@ _is_sqlite = settings.database_url.startswith("sqlite")
 engine = create_engine(
     settings.database_url,
     connect_args={"check_same_thread": False, "timeout": 30} if _is_sqlite else {},
+    # Server databases (PostgreSQL): drop connections the server closed while idle.
+    **({} if _is_sqlite else {"pool_pre_ping": True, "pool_size": 10, "max_overflow": 10}),
 )
 
 if _is_sqlite:
@@ -50,7 +52,7 @@ def _add_missing_columns():
     existing = {c["name"] for c in inspect(engine).get_columns("users")}
     if "is_approved" not in existing:
         with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN is_approved BOOLEAN NOT NULL DEFAULT 1"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_approved BOOLEAN NOT NULL DEFAULT TRUE"))
     # One comment per transfer (tables created before this rule have no constraint).
     with engine.begin() as conn:
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_comment_transfer ON comments (transfer_id)"))
