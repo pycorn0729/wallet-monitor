@@ -7,8 +7,10 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from . import ss58
+from sqlalchemy import func, select
+
 from .db import SessionLocal
-from .models import KINDS
+from .models import KINDS, User
 from .services import unapproved_count
 
 templates_dir = Path(__file__).parent / "templates"
@@ -20,6 +22,8 @@ def _context(request: Request) -> dict:
     if user:
         with SessionLocal() as db:
             ctx["nav_unapproved"] = unapproved_count(db)
+            if user.is_admin:
+                ctx["nav_pending_users"] = db.scalar(select(func.count(User.id)).where(User.is_approved.is_(False)))
     return ctx
 
 

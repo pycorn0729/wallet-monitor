@@ -4,7 +4,7 @@ A FastAPI/uvicorn web app that monitors Bittensor wallets for fund movements: TA
 
 ## Features
 
-- **Restricted access.** Only accounts created by an admin can sign in. There is no public sign-up.
+- **Restricted access.** Anyone can register at `/register`, but a new account can't sign in until an admin approves it on the **Users** page. Admins see a badge with the number of pending registrations. Admins can also create accounts directly.
 - **Roles.**
   - **Admin:** manages users and can edit any wallet.
   - **Approver:** signs off on transfers.
@@ -50,7 +50,7 @@ cp .env.example .env          # set WM_SECRET_KEY, optionally WM_TAOSTATS_API_KE
 .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Sign in, open **Users** to add other people, then add wallets on the **Wallets** page.
+Sign in, then add wallets on the **Wallets** page. Other people register at `/register`; approve them under **Users**.
 
 Run a single uvicorn worker. The background tasks run inside the app process, so several workers would each run their own watcher.
 

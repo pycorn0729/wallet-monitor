@@ -36,8 +36,9 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def authenticate(db: Session, username: str, password: str) -> User | None:
+    """Return the user when the credentials are right (the caller checks approval/active state)."""
     user = db.query(User).filter(User.username == username).first()
-    if user and user.is_active and verify_password(password, user.password_hash):
+    if user and verify_password(password, user.password_hash):
         return user
     return None
 
@@ -45,7 +46,7 @@ def authenticate(db: Session, username: str, password: str) -> User | None:
 def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     uid = request.session.get("uid")
     user = db.get(User, uid) if uid else None
-    if not user or not user.is_active:
+    if not user or not user.is_active or not user.is_approved:
         request.session.clear()
         raise NotAuthenticated()
     request.state.user = user

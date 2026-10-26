@@ -2,7 +2,33 @@
 {% block title %}Users{% endblock %}
 {% block content %}
 <h1>Users</h1>
-<p class="muted small">Only accounts listed here can sign in. <b>Approvers</b> sign off on transfers; <b>admins</b> manage users and every wallet.</p>
+{% if pending %}
+<div class="card">
+  <h2>Waiting for approval <span class="badge warn">{{ pending|length }}</span></h2>
+  <table class="data">
+    <thead><tr><th>Username</th><th>Registered (UTC)</th><th>Grant roles</th><th></th></tr></thead>
+    <tbody>
+    {% for u in pending %}
+      <tr>
+        <td><b>{{ u.username }}</b></td>
+        <td>{{ u.created_at|dt }}</td>
+        <td>
+          <form method="post" action="/users/{{ u.id }}/approve" id="a{{ u.id }}"></form>
+          <label class="check"><input type="checkbox" name="is_approver" value="true" form="a{{ u.id }}"> Approver</label>
+          <label class="check"><input type="checkbox" name="is_admin" value="true" form="a{{ u.id }}"> Admin</label>
+        </td>
+        <td class="nowrap">
+          <button form="a{{ u.id }}" class="primary">Approve</button>
+          <form method="post" action="/users/{{ u.id }}/reject" class="inline" onsubmit="return confirm('Reject and delete {{ u.username }}?')"><button class="danger">Reject</button></form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<p class="muted small">Anyone can register at <code>/register</code>, but only accounts approved here can sign in. <b>Approvers</b> sign off on transfers; <b>admins</b> manage users and every wallet.</p>
 <div class="card table-wrap">
 <table class="data">
   <thead><tr><th>Username</th><th>Wallets</th><th>Admin</th><th>Approver</th><th>Active</th><th>Reset password</th><th></th><th></th></tr></thead>

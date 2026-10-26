@@ -17,7 +17,8 @@
     <a href="/transfers">Transfers
       {% if nav_unapproved %}<span class="badge warn" title="Unapproved transfers">{{ nav_unapproved }}</span>{% endif %}</a>
     <a href="/graph">Graph</a>
-    {% if user.is_admin %}<a href="/users">Users</a>{% endif %}
+    {% if user.is_admin %}<a href="/users">Users
+      {% if nav_pending_users %}<span class="badge warn" title="Registrations waiting for approval">{{ nav_pending_users }}</span>{% endif %}</a>{% endif %}
   </nav>
   <div class="me">
     <a href="/account">{{ user.username }}</a> <span class="muted small">({{ user.role_label }})</span>
@@ -26,9 +27,14 @@
 </header>
 {% endif %}
 <main class="{% block main_class %}container{% endblock %}">
-  {% for f in flashes %}<div class="flash {{ f.category }}">{{ f.message }}</div>{% endfor %}
   {% block content %}{% endblock %}
 </main>
+<div id="toasts" aria-live="polite">
+  {% for f in flashes %}<div class="toast {{ f.category }}" role="{{ 'alert' if f.category == 'error' else 'status' }}">{{ f.message }}</div>{% endfor %}
+  {% if error %}<div class="toast error" role="alert">{{ error }}</div>{% endif %}
+  {% if notice %}<div class="toast success" role="status">{{ notice }}</div>{% endif %}
+</div>
+<script src="/static/toast.js"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

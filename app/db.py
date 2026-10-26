@@ -40,3 +40,14 @@ def init_db():
     from . import models  # noqa: F401  (register models)
 
     Base.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns():
+    """Tiny migration step: add columns introduced after a database was created."""
+    from sqlalchemy import inspect, text
+
+    existing = {c["name"] for c in inspect(engine).get_columns("users")}
+    if "is_approved" not in existing:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_approved BOOLEAN NOT NULL DEFAULT 1"))

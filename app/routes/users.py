@@ -12,7 +12,9 @@ router = APIRouter(prefix="/users")
 
 @router.get("")
 def user_list(request: Request, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
-    return render(request, "users.html", users=db.scalars(select(User).order_by(User.username)).all())
+    users = db.scalars(select(User).order_by(User.username)).all()
+    pending = sorted((u for u in users if not u.is_approved), key=lambda u: u.created_at)
+    return render(request, "users.html", users=[u for u in users if u.is_approved], pending=pending)
 
 
 @router.post("")
@@ -34,6 +36,37 @@ def user_create(
         db.add(User(username=username, password_hash=hash_password(password), is_admin=is_admin, is_approver=is_approver))
         db.commit()
         flash(request, f"User “{username}” created.", "success")
+    return redirect("/users")
+
+
+@router.post("/{user_id}/approve")
+def user_approve(
+    request: Request,
+    user_id: int,
+    is_approver: bool = Form(False),
+    is_admin: bool = Form(False),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    target = db.get(User, user_id)
+    if not target or target.is_approved:
+        raise Forbidden("No pending registration with that id.")
+    target.is_approved = True
+    target.is_active = True
+    target.is_approver, target.is_admin = is_approver, is_admin
+    db.commit()
+    flash(request, f"Approved “{target.username}”. They can sign in now.", "success")
+    return redirect("/users")
+
+
+@router.post("/{user_id}/reject")
+def user_reject(request: Request, user_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    target = db.get(User, user_id)
+    if not target or target.is_approved:
+        raise Forbidden("No pending registration with that id.")
+    db.delete(target)
+    db.commit()
+    flash(request, f"Rejected registration of “{target.username}”.", "success")
     return redirect("/users")
 
 

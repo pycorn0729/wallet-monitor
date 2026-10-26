@@ -4,11 +4,10 @@
 {% block content %}
 <form method="post" action="/login" class="card login">
   <h1>τ Wallet Monitor</h1>
-  <p class="muted">Sign in with an account an admin created for you.</p>
-  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
   <input type="hidden" name="next" value="{{ next }}">
   <label>Username <input name="username" autocomplete="username" required autofocus></label>
   <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
   <button class="primary">Sign in</button>
+  <p class="small muted center">No account? <a href="/register">Register</a> — an admin approves new accounts.</p>
 </form>
 {% endblock %}

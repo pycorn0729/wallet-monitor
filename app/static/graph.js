@@ -68,7 +68,7 @@
     $("graph-msg") && ($("graph-msg").textContent = "Loading…");
     const res = await fetch(`/api/graph?${params}`);
     const data = await res.json();
-    if (!res.ok) { alert(data.detail || "Failed to load graph"); $("graph-msg") && ($("graph-msg").textContent = ""); return; }
+    if (!res.ok) { toast(data.detail || "Failed to load graph", "error"); $("graph-msg") && ($("graph-msg").textContent = ""); return; }
     $("graph-msg")?.remove();
     if (address) expanded.add(address);
     merge(data);

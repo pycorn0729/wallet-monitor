@@ -34,6 +34,8 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_approver: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Self-registered accounts wait for an admin to approve them before they can sign in.
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     wallets: Mapped[list["Wallet"]] = relationship(back_populates="owner")
