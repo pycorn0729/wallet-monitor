@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Transfer #{{ t.id }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/transfers">← Transfers</a></p>
+<h1>{{ t.kind_label }} <span class="small">{{ m.approval(t) }}</span></h1>
+
+<div class="grid2">
+<section class="card">
+  <table class="kv">
+    <tr><th>From</th><td>{{ m.addr(t.from_address, wallets) }} <div class="mono small muted">{{ t.from_address }}</div></td></tr>
+    <tr><th>To</th><td>{{ m.addr(t.to_address, wallets) }} <div class="mono small muted">{{ t.to_address }}</div></td></tr>
+    <tr><th>Amount</th><td>{{ m.amount(t) }}</td></tr>
+    {% if t.hotkey %}<tr><th>Hotkey</th><td class="mono small">{{ t.hotkey }}</td></tr>{% endif %}
+    <tr><th>Time (UTC)</th><td>{{ t.timestamp|dt }}</td></tr>
+    <tr><th>Block</th><td><a href="https://taostats.io/block/{{ t.block_number }}" target="_blank" rel="noopener">#{{ t.block_number }}</a> · event {{ t.event_index }}</td></tr>
+    <tr><th>Extrinsic</th><td class="mono small">{% if t.extrinsic_id %}<a href="https://taostats.io/extrinsic/{{ t.extrinsic_id }}" target="_blank" rel="noopener">{{ t.extrinsic_id }}</a>{% else %}–{% endif %}
+      {% if t.extrinsic_hash %}<div class="muted">{{ t.extrinsic_hash }}</div>{% endif %}</td></tr>
+    <tr><th>Recorded from</th><td class="small">{{ t.source }} · {{ t.created_at|dt }}</td></tr>
+    <tr><th>Approval</th><td>{% if t.approved %}✔ approved by <b>{{ t.approved_by.username if t.approved_by else '?' }}</b> at {{ t.approved_at|dt }}{% else %}<span class="warn-text">Not approved yet</span>{% endif %}</td></tr>
+  </table>
+</section>
+
+<section class="card" id="comments">
+  <h2>What is this transfer for?</h2>
+  {% for c in t.comments %}
+    <div class="comment">
+      <div class="small muted"><b>{{ c.user.username }}</b> · {{ c.created_at|dt }}
+        {% if user.is_admin or c.user_id == user.id %}
+        <form method="post" action="/comments/{{ c.id }}/delete" class="inline"><button class="link small">delete</button></form>{% endif %}</div>
+      <div class="body">{{ c.body }}</div>
+    </div>
+  {% else %}<p class="muted">No comments yet.</p>{% endfor %}
+  {% if can_comment %}
+  <form method="post" action="/transfers/{{ t.id }}/comments" class="stack">
+    <textarea name="body" rows="3" required placeholder="Explain the purpose of this transfer…"></textarea>
+    <button class="primary">Add comment</button>
+  </form>
+  {% else %}<p class="small muted">Only owners of the wallets involved can comment.</p>{% endif %}
+</section>
+</div>
+{% endblock %}

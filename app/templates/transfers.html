@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Transfers{% endblock %}
+{% block content %}
+<h1>Transfer history</h1>
+
+<form method="get" class="filters card">
+  <label>Type
+    <select name="kind"><option value="">All</option>
+      {% for k, l in KINDS.items() %}<option value="{{ k }}" {{ 'selected' if filters.kind == k }}>{{ l }}</option>{% endfor %}
+    </select></label>
+  <label>Approval
+    <select name="status">
+      <option value="">All</option>
+      <option value="unapproved" {{ 'selected' if filters.status == 'unapproved' }}>Unapproved</option>
+      <option value="approved" {{ 'selected' if filters.status == 'approved' }}>Approved</option>
+    </select></label>
+  <label>Owner
+    <select name="owner"><option value="">Anyone</option>
+      <option value="me" {{ 'selected' if filters.owner == 'me' }}>My wallets</option>
+      {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if filters.owner == u.id|string }}>{{ u.username }}</option>{% endfor %}
+    </select></label>
+  <label>Wallet
+    <select name="wallet"><option value="">Any</option>
+      {% for w in all_wallets %}<option value="{{ w.id }}" {{ 'selected' if filters.wallet == w.id|string }}>{{ w.name }}</option>{% endfor %}
+    </select></label>
+  <label>Address <input name="address" value="{{ filters.address }}" class="mono" placeholder="5..."></label>
+  <button class="primary">Filter</button>
+  <a href="/transfers" class="small">reset</a>
+</form>
+
+<p class="muted small">{{ total }} transfer{{ '' if total == 1 else 's' }}{% if filters.status != 'approved' and nav_unapproved %} · <a href="?status=unapproved">{{ nav_unapproved }} unapproved overall</a>{% endif %}</p>
+
+{% if user.is_approver %}
+<form id="bulk" method="post" action="/transfers/bulk-approve" class="actions">
+  <span class="small muted">Selected:</span>
+  <button name="approved" value="1" class="pill ok">✔ Approve</button>
+  <button name="approved" value="0" class="pill">Revoke</button>
+</form>
+{% endif %}
+
+<div class="card">{{ m.transfer_table(transfers, wallets, selectable=user.is_approver) }}</div>
+
+{% if pages > 1 %}
+<nav class="pager">
+  {% set qs = 'kind=' ~ filters.kind ~ '&status=' ~ filters.status ~ '&owner=' ~ filters.owner ~ '&wallet=' ~ filters.wallet ~ '&address=' ~ filters.address %}
+  {% if page > 1 %}<a href="?{{ qs }}&page={{ page - 1 }}">← Newer</a>{% endif %}
+  <span>Page {{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a href="?{{ qs }}&page={{ page + 1 }}">Older →</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

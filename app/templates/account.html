@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<h1>My account</h1>
+<div class="card narrow">
+  <p><b>{{ user.username }}</b> · {{ user.role_label }}</p>
+  <form method="post" action="/account/password" class="stack">
+    <label>Current password <input type="password" name="current" required></label>
+    <label>New password <input type="password" name="new" minlength="8" required></label>
+    <label>Repeat new password <input type="password" name="confirm" minlength="8" required></label>
+    <button class="primary">Change password</button>
+  </form>
+</div>
+{% endblock %}

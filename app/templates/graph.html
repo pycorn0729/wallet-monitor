@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Connection graph{% endblock %}
+{% block main_class %}container wide{% endblock %}
+{% block head %}<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>{% endblock %}
+{% block content %}
+<h1>Connection graph</h1>
+<form id="graph-form" class="filters card">
+  <label>Center address
+    <input id="address" list="wallet-list" class="mono" value="{{ address }}" placeholder="pick a wallet or paste any SS58 address" size="52"></label>
+  <datalist id="wallet-list">{% for w in wallets %}<option value="{{ w.address }}">{{ w.name }} ({{ w.owner.username }})</option>{% endfor %}</datalist>
+  <label>Source
+    <select id="source">
+      <option value="taostats" {{ 'selected' if default_source == 'taostats' }} {{ '' if taostats_enabled else 'disabled' }}>Taostats (all counterparties)</option>
+      <option value="db" {{ 'selected' if default_source == 'db' }}>App database (registered wallets only)</option>
+    </select></label>
+  <label class="check"><input type="checkbox" id="k-transfer" checked> TAO</label>
+  <label class="check"><input type="checkbox" id="k-stake" checked> Alpha</label>
+  <label>Max rows <input id="limit" type="number" value="200" min="10" max="1000" class="w-sm"></label>
+  <button class="primary">Load</button>
+  <button type="button" id="clear">Clear</button>
+</form>
+{% if not taostats_enabled %}<p class="small muted">Set <code>WM_TAOSTATS_API_KEY</code> to explore transfers with unregistered addresses. Without it the graph shows transfers stored by the app.</p>{% endif %}
+<p class="small muted">Leave the address empty with “App database” to see every stored transfer. Double-click a node (or use “Expand”) to load its connections.
+  <span class="legend"><i class="lg tao"></i>TAO <i class="lg alpha"></i>Alpha <i class="lg reg"></i>registered wallet <i class="lg ext"></i>external <span class="badge warn">n</span> unapproved</span></p>
+
+<div class="graph-layout">
+  <div id="graph" class="card"><div id="graph-msg" class="muted center">Pick an address and press Load.</div></div>
+  <aside id="panel" class="card"><p class="muted">Click a node or an edge for details.</p></aside>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/graph.js"></script>{% endblock %}

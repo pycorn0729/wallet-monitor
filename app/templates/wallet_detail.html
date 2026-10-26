@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ wallet.name }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/wallets">← Wallets</a></p>
+<h1>{{ wallet.name }} <span class="small muted">owned by {{ wallet.owner.username }}</span></h1>
+<p class="mono addr">{{ wallet.address }}
+  <button class="link small" onclick="navigator.clipboard.writeText('{{ wallet.address }}')">copy</button>
+  · <a class="small" href="https://taostats.io/account/{{ wallet.address }}" target="_blank" rel="noopener">taostats ↗</a>
+  · <a class="small" href="/graph?address={{ wallet.address }}">connection graph</a></p>
+{% if wallet.purpose %}<p class="purpose">{{ wallet.purpose }}</p>{% endif %}
+
+<section class="stats">
+  <div class="stat big"><div class="label">Total</div><div class="value">{{ wallet.total|tao }} τ</div>
+    <div class="small muted">updated {{ wallet.balance_updated_at|dt }}</div></div>
+  <div class="stat"><div class="label">Free</div><div class="value">{{ wallet.free|tao }} τ</div></div>
+  <div class="stat"><div class="label">Staked (TAO value)</div><div class="value">{{ wallet.staked|tao }} τ</div></div>
+  <a class="stat {{ 'alert' if unapproved }}" href="/transfers?wallet={{ wallet.id }}&status=unapproved"><div class="label">Unapproved transfers</div><div class="value">{{ unapproved }}</div></a>
+</section>
+
+<div class="actions">
+  <form method="post" action="/wallets/{{ wallet.id }}/refresh" class="inline"><button>↻ Refresh balance</button></form>
+  {% if can_manage and taostats_enabled %}
+  <form method="post" action="/wallets/{{ wallet.id }}/import" class="inline"><button title="Backfill past transfers from Taostats">⇣ Import history</button></form>
+  {% endif %}
+</div>
+
+{% if positions %}
+<section class="card">
+  <h2>Stake positions</h2>
+  <table class="data">
+    <thead><tr><th>Subnet</th><th>Hotkey</th><th class="num">Alpha</th><th class="num">≈ TAO</th></tr></thead>
+    <tbody>{% for p in positions %}
+      <tr><td>SN{{ p.netuid }}</td><td class="mono small" title="{{ p.hotkey }}">{{ p.hotkey|short }}</td>
+        <td class="num mono">{{ p.alpha|tao }}</td><td class="num mono">{{ p.tao|tao }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Transfers <span class="small muted">(latest 200)</span></h2>
+  {{ m.transfer_table(transfers, wallets, focus=wallet.address) }}
+</section>
+
+{% if can_manage %}
+<details class="card">
+  <summary><b>Edit / remove wallet</b></summary>
+  <form method="post" action="/wallets/{{ wallet.id }}/edit" class="stack narrow">
+    <label>Name <input name="name" value="{{ wallet.name }}" required maxlength="128"></label>
+    <label>Usage purpose <textarea name="purpose" rows="3">{{ wallet.purpose }}</textarea></label>
+    {% if user.is_admin %}
+    <label>Owner <select name="owner_id">{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == wallet.owner_id }}>{{ u.username }}</option>{% endfor %}</select></label>
+    {% endif %}
+    <button class="primary">Save</button>
+  </form>
+  <form method="post" action="/wallets/{{ wallet.id }}/delete" onsubmit="return confirm('Remove this wallet from monitoring?')" class="danger-zone">
+    <button class="danger">Remove wallet</button>
+    <span class="small muted">Stored transfers are kept; new ones stop being recorded.</span>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,63 @@
+{% macro addr(address, wallets) -%}
+  {%- set w = wallets.get(address) -%}
+  {%- if w -%}
+    <a href="/wallets/{{ w.id }}" class="wname" title="{{ address }} · owner {{ w.owner.username }}">{{ w.name }}</a>
+  {%- else -%}
+    <span class="mono ext" title="{{ address }}">{{ address|short }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro amount(t) -%}
+  {%- if t.kind == 'stake_transfer' -%}
+    {% if t.alpha is not none %}<span class="mono">{{ t.alpha|tao }} α</span><br>{% endif %}
+    <span class="mono muted small">≈ {{ t.amount|tao }} τ</span>
+    <div class="small muted">SN{{ t.origin_netuid if t.origin_netuid is not none else '?' }} → SN{{ t.destination_netuid if t.destination_netuid is not none else '?' }}</div>
+  {%- else -%}
+    <span class="mono">{{ t.amount|tao }} τ</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro approval(t) -%}
+  {% if user.is_approver %}
+    <form method="post" action="/transfers/{{ t.id }}/approve" class="inline">
+      <input type="hidden" name="approved" value="{{ '0' if t.approved else '1' }}">
+      {% if t.approved %}
+        <button class="pill ok" title="Approved by {{ t.approved_by.username if t.approved_by else '?' }} – click to revoke">✔ Approved</button>
+      {% else %}
+        <button class="pill warn" title="Click to approve">Approve</button>
+      {% endif %}
+    </form>
+  {% else %}
+    {% if t.approved %}<span class="pill ok" title="by {{ t.approved_by.username if t.approved_by else '?' }}">✔ Approved</span>
+    {% else %}<span class="pill warn">Unapproved</span>{% endif %}
+  {% endif %}
+{%- endmacro %}
+
+{% macro transfer_table(transfers, wallets, selectable=False, focus=None) %}
+<div class="table-wrap">
+<table class="data">
+  <thead><tr>
+    {% if selectable %}<th><input type="checkbox" onclick="document.querySelectorAll('input[name=ids]').forEach(c=>c.checked=this.checked)"></th>{% endif %}
+    <th>Time (UTC)</th><th>Type</th><th>From</th><th>To</th><th class="num">Amount</th><th>Extrinsic</th><th>Comments</th><th>Approval</th>
+  </tr></thead>
+  <tbody>
+  {% for t in transfers %}
+    <tr class="{{ '' if t.approved else 'unapproved' }}">
+      {% if selectable %}<td><input type="checkbox" name="ids" value="{{ t.id }}" form="bulk"></td>{% endif %}
+      <td class="nowrap"><a href="/transfers/{{ t.id }}">{{ t.timestamp|dt }}</a><div class="small muted">#{{ t.block_number }}</div></td>
+      <td><span class="tag {{ t.kind }}">{{ 'TAO' if t.kind == 'transfer' else 'Alpha' }}</span>
+        {% if focus %}{% if t.from_address == focus and t.to_address == focus %}<span class="small muted">self</span>{% elif t.from_address == focus %}<span class="small out">out</span>{% else %}<span class="small in">in</span>{% endif %}{% endif %}</td>
+      <td>{{ addr(t.from_address, wallets) }}</td>
+      <td>{{ addr(t.to_address, wallets) }}</td>
+      <td class="num">{{ amount(t) }}</td>
+      <td class="mono small">{% if t.extrinsic_id %}<a href="https://taostats.io/extrinsic/{{ t.extrinsic_id }}" target="_blank" rel="noopener">{{ t.extrinsic_id }}</a>{% else %}–{% endif %}</td>
+      <td class="small">{% if t.comments %}<a href="/transfers/{{ t.id }}#comments" title="{{ t.comments[-1].body }}">💬 {{ t.comments|length }}</a>{% else %}<a class="muted" href="/transfers/{{ t.id }}#comments">add</a>{% endif %}</td>
+      <td>{{ approval(t) }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="muted center">No transfers.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
