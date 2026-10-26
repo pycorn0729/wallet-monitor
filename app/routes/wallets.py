@@ -45,9 +45,7 @@ def wallet_list(
 ):
     total_expr = Wallet.free_rao + Wallet.staked_rao
     query = select(Wallet)
-    if owner == "me":
-        query = query.where(Wallet.owner_id == user.id)
-    elif owner.isdigit():
+    if owner.isdigit():
         query = query.where(Wallet.owner_id == int(owner))
     lo, hi = _parse_float(min_balance), _parse_float(max_balance)
     if lo is not None:

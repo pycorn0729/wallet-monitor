@@ -49,15 +49,4 @@
   </tbody>
 </table>
 </div>
-
-<div class="card narrow">
-  <h2>Add user</h2>
-  <form method="post" action="/users" class="stack">
-    <label>Username <input name="username" required maxlength="64"></label>
-    <label>Password <input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
-    <label class="check"><input type="checkbox" name="is_approver" value="true"> Approver</label>
-    <label class="check"><input type="checkbox" name="is_admin" value="true"> Admin</label>
-    <button class="primary">Create user</button>
-  </form>
-</div>
 {% endblock %}

@@ -8,7 +8,6 @@
   <label>Owner
     <select name="owner">
       <option value="">All users</option>
-      <option value="me" {{ 'selected' if filters.owner == 'me' }}>Mine</option>
       {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if filters.owner == u.id|string }}>{{ u.username }}</option>{% endfor %}
     </select></label>
   <label>Total balance &gt;

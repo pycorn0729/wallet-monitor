@@ -4,7 +4,7 @@ A FastAPI/uvicorn web app that monitors Bittensor wallets for fund movements: TA
 
 ## Features
 
-- **Restricted access.** Anyone can register at `/register`, but a new account can't sign in until an admin approves it on the **Users** page. Admins see a badge with the number of pending registrations. Admins can also create accounts directly.
+- **Restricted access.** Anyone can register at `/register`, but a new account can't sign in until an admin approves it on the **Users** page. Admins see a badge with the number of pending registrations.
 - **Roles.**
   - **Admin:** manages users and can edit any wallet.
   - **Approver:** signs off on transfers.

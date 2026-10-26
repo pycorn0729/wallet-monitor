@@ -59,8 +59,6 @@ def transfer_list(
     if wallet.isdigit():
         w = db.get(Wallet, int(wallet))
         addresses = [w.address] if w else []
-    elif owner == "me":
-        addresses = list(db.scalars(select(Wallet.address).where(Wallet.owner_id == user.id)))
     elif owner.isdigit():
         addresses = list(db.scalars(select(Wallet.address).where(Wallet.owner_id == int(owner))))
     if address.strip():

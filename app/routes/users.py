@@ -17,28 +17,6 @@ def user_list(request: Request, admin: User = Depends(require_admin), db: Sessio
     return render(request, "users.html", users=[u for u in users if u.is_approved], pending=pending)
 
 
-@router.post("")
-def user_create(
-    request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    is_admin: bool = Form(False),
-    is_approver: bool = Form(False),
-    admin: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-):
-    username = username.strip()
-    if not username or len(password) < 8:
-        flash(request, "Username is required and password must be at least 8 characters.", "error")
-    elif db.scalars(select(User).where(User.username == username)).first():
-        flash(request, "That username is taken.", "error")
-    else:
-        db.add(User(username=username, password_hash=hash_password(password), is_admin=is_admin, is_approver=is_approver))
-        db.commit()
-        flash(request, f"User “{username}” created.", "success")
-    return redirect("/users")
-
-
 @router.post("/{user_id}/approve")
 def user_approve(
     request: Request,
