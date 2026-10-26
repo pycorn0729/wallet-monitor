@@ -6,7 +6,7 @@ from .. import ss58
 from ..auth import Forbidden, current_user
 from ..db import get_db
 from ..models import AddressLabel, User
-from ..services import wallet_map
+from ..services import paginate, wallet_map
 from ..web import flash, redirect, render
 
 router = APIRouter(prefix="/labels")
@@ -19,16 +19,23 @@ def can_edit(user: User, row: AddressLabel) -> bool:
 
 @router.get("")
 def label_list(
-    request: Request, q: str = "", address: str = "", user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request,
+    q: str = "",
+    address: str = "",
+    page: int = 1,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
 ):
-    query = select(AddressLabel).order_by(AddressLabel.label)
+    query = select(AddressLabel).order_by(AddressLabel.label, AddressLabel.id)
     if q.strip():
         like = f"%{q.strip()}%"
         query = query.where(or_(AddressLabel.label.ilike(like), AddressLabel.address.ilike(like), AddressLabel.note.ilike(like)))
+    pg = paginate(db, query, page, 100)
     return render(
         request,
         "labels.html",
-        labels=db.scalars(query).all(),
+        labels=pg["rows"],
+        pg=pg,
         q=q,
         prefill=address.strip(),  # "Label this address" links open the dialog prefilled
         wallets=wallet_map(db),

@@ -36,6 +36,7 @@
   {% else %}<tr><td colspan="5" class="muted center">No labels yet.</td></tr>{% endfor %}
   </tbody>
 </table>
+{{ m.pager(pg) }}
 </div>
 
 {% include "_label_dialog.html" %}

@@ -40,12 +40,5 @@
 
 <div class="card">{{ m.transfer_table(transfers, wallets, selectable=user.is_approver) }}</div>
 
-{% if pages > 1 %}
-<nav class="pager">
-  {% set qs = 'kind=' ~ filters.kind ~ '&status=' ~ filters.status ~ '&owner=' ~ filters.owner ~ '&wallet=' ~ filters.wallet ~ '&address=' ~ filters.address %}
-  {% if page > 1 %}<a href="?{{ qs }}&page={{ page - 1 }}">← Newer</a>{% endif %}
-  <span>Page {{ page }} / {{ pages }}</span>
-  {% if page < pages %}<a href="?{{ qs }}&page={{ page + 1 }}">Older →</a>{% endif %}
-</nav>
-{% endif %}
+{{ m.pager(pg, "← Newer", "Older →") }}
 {% endblock %}

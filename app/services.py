@@ -9,6 +9,15 @@ from .config import get_settings
 from .models import KV, AddressLabel, Transfer, Wallet
 
 
+def paginate(db: Session, query, page: int, size: int = 50) -> dict:
+    """One page of `query` (already ordered) plus what the pager macro needs."""
+    total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))
+    pages = max(1, (total + size - 1) // size)
+    page = min(max(1, page), pages)
+    rows = db.scalars(query.offset((page - 1) * size).limit(size)).all()
+    return {"rows": rows, "total": total, "page": page, "pages": pages}
+
+
 def kv_get(db: Session, key: str) -> str | None:
     row = db.get(KV, key)
     return row.value if row else None

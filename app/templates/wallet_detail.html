@@ -40,8 +40,9 @@
 {% endif %}
 
 <section class="card">
-  <h2>Transfers <span class="small muted">(latest 200)</span></h2>
+  <h2>Transfers <span class="small muted">({{ "{:,}".format(pg.total) }})</span></h2>
   {{ m.transfer_table(transfers, wallets, focus=wallet.address) }}
+  {{ m.pager(pg, "← Newer", "Older →") }}
 </section>
 
 {% if can_manage %}

@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, Form, Request
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..auth import Forbidden, current_user, require_approver
 from ..db import get_db
 from ..models import KINDS, Comment, Transfer, User, Wallet, utcnow
-from ..services import related, visible, wallet_map
+from ..services import paginate, related, visible, wallet_map
 from ..web import flash, redirect, render
 
 router = APIRouter()
@@ -68,20 +68,13 @@ def transfer_list(
     if addresses is not None:
         query = query.where(or_(Transfer.from_address.in_(addresses), Transfer.to_address.in_(addresses)))
 
-    total = db.scalar(select(func.count()).select_from(query.subquery()))
-    page = max(1, page)
-    transfers = db.scalars(
-        query.order_by(Transfer.block_number.desc(), Transfer.event_index.desc())
-        .offset((page - 1) * PAGE_SIZE)
-        .limit(PAGE_SIZE)
-    ).all()
+    pg = paginate(db, query.order_by(Transfer.block_number.desc(), Transfer.event_index.desc()), page, PAGE_SIZE)
     return render(
         request,
         "transfers.html",
-        transfers=transfers,
-        total=total,
-        page=page,
-        pages=max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE),
+        transfers=pg["rows"],
+        total=pg["total"],
+        pg=pg,
         wallets=wallet_map(db),
         users=db.scalars(select(User).order_by(User.username)).all(),
         all_wallets=db.scalars(select(Wallet).order_by(Wallet.name)).all(),

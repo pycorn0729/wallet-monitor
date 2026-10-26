@@ -7,7 +7,7 @@ from ..auth import Forbidden, current_user
 from ..db import get_db
 from ..models import KINDS, RAO_PER_TAO, Transfer, User, Wallet
 from ..config import get_settings
-from ..services import stake_positions, store_transfers, unapproved_by_address, visible, wallet_map
+from ..services import paginate, stake_positions, store_transfers, unapproved_by_address, visible, wallet_map
 from ..taostats import TaostatsError
 from ..web import flash, redirect, render
 
@@ -110,21 +110,27 @@ def wallet_create(
 
 @router.get("/wallets/{wallet_id}")
 def wallet_detail(
-    request: Request, wallet_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)
+    request: Request,
+    wallet_id: int,
+    page: int = 1,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
 ):
     wallet = _get_wallet(db, wallet_id)
-    transfers = db.scalars(
+    pg = paginate(
+        db,
         select(Transfer)
         .where(or_(Transfer.from_address == wallet.address, Transfer.to_address == wallet.address), visible())
-        .order_by(Transfer.block_number.desc(), Transfer.event_index.desc())
-        .limit(200)
-    ).all()
+        .order_by(Transfer.block_number.desc(), Transfer.event_index.desc()),
+        page,
+    )
     return render(
         request,
         "wallet_detail.html",
         wallet=wallet,
         positions=stake_positions(wallet),
-        transfers=transfers,
+        transfers=pg["rows"],
+        pg=pg,
         wallets=wallet_map(db),
         unapproved=unapproved_by_address(db).get(wallet.address, 0),
         can_manage=user.is_admin or wallet.owner_id == user.id,

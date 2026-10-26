@@ -72,3 +72,17 @@
 </table>
 </div>
 {% endmacro %}
+
+
+{# Newer/older links that keep the current query string (filters, search). #}
+{% macro pager(pg, prev="← Previous", next="Next →") %}
+{% if pg.pages > 1 %}
+{% set params = request.query_params.multi_items()|rejectattr(0, "equalto", "page")|list %}
+{% set qs = params|urlencode %}
+<nav class="pager">
+  {% if pg.page > 1 %}<a href="?{{ qs }}{{ '&' if qs }}page={{ pg.page - 1 }}">{{ prev }}</a>{% endif %}
+  <span>Page {{ pg.page }} / {{ pg.pages }} <span class="muted small">· {{ "{:,}".format(pg.total) }} total</span></span>
+  {% if pg.page < pg.pages %}<a href="?{{ qs }}{{ '&' if qs }}page={{ pg.page + 1 }}">{{ next }}</a>{% endif %}
+</nav>
+{% endif %}
+{% endmacro %}
