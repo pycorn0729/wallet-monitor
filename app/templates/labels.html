@@ -7,7 +7,7 @@
   <button class="primary" data-dialog="label-dialog" data-label-new>+ Add label</button>
 </div>
 <p class="muted small">Name any address — exchanges, partners, team members — so it's recognisable in transfer lists and the connection graph.
-  Labels are for display only; they are not monitored wallets.</p>
+  Anyone can add labels; a label can be edited or removed by the person who added it, or by an admin. Labels are for display only; they are not monitored wallets.</p>
 
 <form method="get" class="filters card">
   <label>Search <input name="q" value="{{ q }}" placeholder="label, address or note"></label>
@@ -27,10 +27,10 @@
       <td class="small clip" title="{{ l.note }}">{{ l.note }}</td>
       <td class="small muted nowrap">{{ l.created_by.username if l.created_by else '?' }} · {{ l.created_at.strftime('%Y-%m-%d') }}</td>
       <td class="nowrap">
-        <button class="link small" data-dialog="label-dialog"
-          data-address="{{ l.address }}" data-label="{{ l.label }}" data-note="{{ l.note }}">edit</button>
-        · <a class="small" href="/graph?address={{ l.address }}">graph</a>
-        · <form method="post" action="/labels/{{ l.id }}/delete" class="inline" onsubmit="return confirm('Remove label “{{ l.label }}”?')"><button class="link danger small">delete</button></form>
+        {% if can_edit(user, l) %}<button class="link small" data-dialog="label-dialog"
+          data-address="{{ l.address }}" data-label="{{ l.label }}" data-note="{{ l.note }}">edit</button> · {% endif %}
+        <a class="small" href="/graph?address={{ l.address }}">graph</a>
+        {% if can_edit(user, l) %}· <form method="post" action="/labels/{{ l.id }}/delete" class="inline" onsubmit="return confirm('Remove label “{{ l.label }}”?')"><button class="link danger small">delete</button></form>{% endif %}
       </td>
     </tr>
   {% else %}<tr><td colspan="5" class="muted center">No labels yet.</td></tr>{% endfor %}

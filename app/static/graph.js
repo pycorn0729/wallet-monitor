@@ -108,13 +108,15 @@
   function showNode(id) {
     const n = raw.nodes.get(id);
     if (!n) return;
-    const admin = !!$("graph").dataset.admin;
+    // Anyone can label an unlabeled address; an existing label only by its author or an admin.
+    const me = Number($("graph").dataset.userId);
+    const canLabel = !n.tag || !!$("graph").dataset.admin || n.tag_author_id === me;
     $("panel").innerHTML = `
       <h3>${n.registered ? esc(n.label) : n.labeled ? `<span class="lname">${esc(n.label)}</span>` : "Unlabeled address"}</h3>
       <p class="mono small">${esc(n.id)}${copyBtn(n.id)}</p>
       ${n.tag && n.registered ? `<p class="small">Label: <span class="lname">${esc(n.tag)}</span></p>` : ""}
       ${n.note ? `<p class="small">${esc(n.note)}</p>` : ""}
-      ${admin && !n.registered ? `<p><button class="small" id="label-btn" data-dialog="label-dialog"
+      ${canLabel && !n.registered ? `<p><button class="small" id="label-btn" data-dialog="label-dialog"
           data-address="${esc(n.id)}" data-label="${esc(n.tag || "")}" data-note="${esc(n.note || "")}">🏷 ${n.labeled ? "Edit label" : "Label this address"}</button></p>` : ""}
       ${n.registered ? `<p>Owner <b>${esc(n.owner)}</b> · total <b>${fmt(n.total, 4)} τ</b></p>
         ${n.purpose ? `<p class="small">${esc(n.purpose)}</p>` : ""}

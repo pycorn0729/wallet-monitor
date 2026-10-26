@@ -51,3 +51,6 @@ def _add_missing_columns():
     if "is_approved" not in existing:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN is_approved BOOLEAN NOT NULL DEFAULT 1"))
+    # One comment per transfer (tables created before this rule have no constraint).
+    with engine.begin() as conn:
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_comment_transfer ON comments (transfer_id)"))

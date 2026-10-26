@@ -372,3 +372,5 @@ button:disabled { opacity: 0.55; cursor: progress; }
 .copy-btn:active { transform: scale(0.92); }
 .copy-btn.copied { color: var(--ok); background: var(--ok-bg); }
 .ts-link + .copy-btn { margin-left: 0.05rem; }
+.comment-foot { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
+.comment-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

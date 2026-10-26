@@ -34,7 +34,7 @@ A FastAPI/uvicorn web app that monitors Bittensor wallets for fund movements: TA
   - Registered wallets are shown by name and owner, admin-labeled addresses in teal, everything else as a short address.
   - Edges carry totals and transfer counts, and are highlighted with the number of unapproved transfers.
   - Double-click a node to expand its connections.
-- **Address labels (`/labels`, admins).** Admins can name any address (an exchange, a partner, a team member). Labels aren't monitored wallets; they only make transfer lists and the graph easier to read. Admins can also label an address straight from the graph's side panel.
+- **Address labels (`/labels`).** Any user can name any address (an exchange, a partner, a team member), from the Labels page or straight from the graph's side panel. A label can be edited or removed by the user who added it, or by an admin. Labels aren't monitored wallets; they only make transfer lists and the graph easier to read.
 - **History import (optional).** With a Taostats API key, "Import history" on a wallet page loads that wallet's transfers from before the indexed range. Records the app already has are de-duplicated.
 
 ## Setup

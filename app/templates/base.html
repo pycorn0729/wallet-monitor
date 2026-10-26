@@ -23,7 +23,7 @@
     {{ navlink('/wallets', 'Wallets') }}
     {% call navlink('/transfers', 'Transfers') %}{% if nav_unapproved %}<span class="badge warn" title="Unapproved transfers">{{ nav_unapproved }}</span>{% endif %}{% endcall %}
     {{ navlink('/graph', 'Graph') }}
-    {% if user.is_admin %}{{ navlink('/labels', 'Labels') }}{% endif %}
+    {{ navlink('/labels', 'Labels') }}
     {% if user.is_admin %}{% call navlink('/users', 'Users') %}{% if nav_pending_users %}<span class="badge warn" title="Registrations waiting for approval">{{ nav_pending_users }}</span>{% endif %}{% endcall %}{% endif %}
   </nav>
   <div class="me">

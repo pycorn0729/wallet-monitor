@@ -21,23 +21,23 @@
   </table>
 </section>
 
-<section class="card" id="comments">
+<section class="card" id="comment">
   <h2>What is this transfer for?</h2>
-  {% for c in t.comments %}
-    <div class="comment">
-      <div class="small muted"><b>{{ c.user.username }}</b> · {{ c.created_at|dt }}
-        {% if user.is_admin or c.user_id == user.id %}
-        <form method="post" action="/comments/{{ c.id }}/delete" class="inline"><button class="link small">delete</button></form>{% endif %}</div>
-      <div class="body">{{ c.body }}</div>
-    </div>
-  {% else %}<p class="muted">No comments yet.</p>{% endfor %}
+  {% set c = t.comment %}
   {% if can_comment %}
-  <form method="post" action="/transfers/{{ t.id }}/comments" class="stack">
-    <textarea name="body" rows="3" required placeholder="Explain the purpose of this transfer…"></textarea>
-    <button class="primary">Add comment</button>
+  <form method="post" action="/transfers/{{ t.id }}/comment" class="stack">
+    <textarea name="body" rows="4" placeholder="Explain the purpose of this transfer…">{{ c.body if c }}</textarea>
+    <div class="comment-foot">
+      <button class="primary">Save</button>
+      {% if c %}<span class="small muted">Last edited by <b>{{ c.user.username }}</b> · {{ c.created_at|dt }} UTC · clear the text and save to remove it</span>{% endif %}
+    </div>
   </form>
-  {% elif is_related %}<p class="small muted">Only owners of the wallets involved can comment.</p>
-  {% else %}<p class="small muted">This transfer doesn't involve a registered wallet, so it needs no approval or comments.</p>{% endif %}
+  {% elif c %}
+    <div class="comment"><div class="body">{{ c.body }}</div>
+      <div class="small muted">by <b>{{ c.user.username }}</b> · {{ c.created_at|dt }} UTC</div></div>
+    {% if is_related %}<p class="small muted">Only owners of the wallets involved can edit this.</p>{% endif %}
+  {% elif is_related %}<p class="muted">No comment yet. Only owners of the wallets involved can add one.</p>
+  {% else %}<p class="small muted">This transfer doesn't involve a registered wallet, so it needs no approval or comment.</p>{% endif %}
 </section>
 </div>
 {% endblock %}

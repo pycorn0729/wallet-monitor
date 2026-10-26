@@ -64,6 +64,7 @@ def build_graph(db: Session, address: str, kinds: set[str], limit: int) -> dict:
                 "labeled": bool(lbl) and not w,
                 "tag": lbl.label if lbl else None,
                 "note": lbl.note if lbl else None,
+                "tag_author_id": lbl.created_by_id if lbl else None,
                 "wallet_id": w.id if w else None,
                 "owner": w.owner.username if w else None,
                 "purpose": w.purpose if w else None,

@@ -134,33 +134,30 @@ async def transfer_bulk_approve(
     return redirect(request.headers.get("referer") or "/transfers")
 
 
-@router.post("/transfers/{transfer_id}/comments")
-def comment_add(
+@router.post("/transfers/{transfer_id}/comment")
+def comment_save(
     request: Request,
     transfer_id: int,
-    body: str = Form(...),
+    body: str = Form(""),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    """Set the transfer's single comment; an empty body removes it."""
     transfer = _get_transfer(db, transfer_id)
     if not can_comment(db, user, transfer):
         raise Forbidden("Only owners of the wallets involved in this transfer can comment.")
-    if body.strip():
-        db.add(Comment(transfer_id=transfer.id, user_id=user.id, body=body.strip()))
-        db.commit()
-    return redirect(f"/transfers/{transfer_id}#comments")
-
-
-@router.post("/comments/{comment_id}/delete")
-def comment_delete(
-    request: Request, comment_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)
-):
-    comment = db.get(Comment, comment_id)
-    if not comment:
-        raise Forbidden("Comment not found.")
-    if not (user.is_admin or comment.user_id == user.id):
-        raise Forbidden("You can only delete your own comments.")
-    transfer_id = comment.transfer_id
-    db.delete(comment)
+    body = body.strip()
+    comment = transfer.comment
+    if not body:
+        if comment:
+            db.delete(comment)
+            flash(request, "Comment removed.", "success")
+    elif comment:
+        if comment.body != body:
+            comment.body, comment.user_id, comment.created_at = body, user.id, utcnow()
+            flash(request, "Comment updated.", "success")
+    else:
+        db.add(Comment(transfer_id=transfer.id, user_id=user.id, body=body))
+        flash(request, "Comment saved.", "success")
     db.commit()
-    return redirect(f"/transfers/{transfer_id}#comments")
+    return redirect(f"/transfers/{transfer_id}#comment")

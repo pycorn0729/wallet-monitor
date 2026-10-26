@@ -128,12 +128,21 @@ class Transfer(Base):
         return None if self.alpha_rao is None else self.alpha_rao / RAO_PER_TAO
 
     @property
+    def comment(self) -> "Comment | None":
+        """The transfer's single purpose note (at most one row; see the unique index on comments)."""
+        return self.comments[0] if self.comments else None
+
+    @property
     def kind_label(self) -> str:
         return KINDS.get(self.kind, self.kind)
 
 
 class Comment(Base):
+    """What a transfer was for. One per transfer: saving replaces it, clearing it deletes it.
+    `user` / `created_at` record the last edit."""
+
     __tablename__ = "comments"
+    __table_args__ = (UniqueConstraint("transfer_id", name="uq_comment_transfer"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     transfer_id: Mapped[int] = mapped_column(ForeignKey("transfers.id", ondelete="CASCADE"), index=True)
