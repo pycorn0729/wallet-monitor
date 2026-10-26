@@ -5,7 +5,7 @@
 <p class="small"><a href="/wallets">← Wallets</a></p>
 <h1>{{ wallet.name }} <span class="small muted">owned by {{ wallet.owner.username }}</span></h1>
 <p class="mono addr">{{ wallet.address }}
-  <button class="link small" onclick="navigator.clipboard.writeText('{{ wallet.address }}')">copy</button>
+  {{ m.copy(wallet.address) }}
   · <a class="small" href="https://taostats.io/account/{{ wallet.address }}" target="_blank" rel="noopener">taostats ↗</a>
   · <a class="small" href="/graph?address={{ wallet.address }}">connection graph</a></p>
 {% if wallet.purpose %}<p class="purpose">{{ wallet.purpose }}</p>{% endif %}
@@ -32,7 +32,7 @@
   <table class="data">
     <thead><tr><th>Subnet</th><th>Hotkey</th><th class="num">Alpha</th><th class="num">≈ TAO</th></tr></thead>
     <tbody>{% for p in positions %}
-      <tr><td>SN{{ p.netuid }}</td><td class="mono small" title="{{ p.hotkey }}">{{ p.hotkey|short }}</td>
+      <tr><td>SN{{ p.netuid }}</td><td class="mono small nowrap" title="{{ p.hotkey }}">{{ p.hotkey|short }}{{ m.copy(p.hotkey) }}</td>
         <td class="num mono">{{ p.alpha|tao }}</td><td class="num mono">{{ p.tao|tao }}</td></tr>{% endfor %}
     </tbody>
   </table>

@@ -14,6 +14,7 @@
   const fmt = (v, d = 4) => (v == null ? "–" : Number(v).toLocaleString(undefined, { maximumFractionDigits: d }));
   const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  const copyBtn = (a) => `<button type="button" class="copy-btn" data-copy="${esc(a)}" title="Copy ${esc(a)}" aria-label="Copy address">⧉</button>`;
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
   function nodeView(n) {
@@ -110,7 +111,7 @@
     const admin = !!$("graph").dataset.admin;
     $("panel").innerHTML = `
       <h3>${n.registered ? esc(n.label) : n.labeled ? `<span class="lname">${esc(n.label)}</span>` : "Unlabeled address"}</h3>
-      <p class="mono small">${esc(n.id)}</p>
+      <p class="mono small">${esc(n.id)}${copyBtn(n.id)}</p>
       ${n.tag && n.registered ? `<p class="small">Label: <span class="lname">${esc(n.tag)}</span></p>` : ""}
       ${n.note ? `<p class="small">${esc(n.note)}</p>` : ""}
       ${admin && !n.registered ? `<p><button class="small" id="label-btn" data-dialog="label-dialog"
@@ -154,6 +155,7 @@
       if (n && n.labeled) return `<span class="lname">${esc(n.label)}</span>`;
       return `<span class="mono">${short(a)}</span>`;
     };
+    const named = (a) => `${name(a)}${copyBtn(a)}`;
     const alpha = e.kind === "stake_transfer";
     const related = [e.from, e.to].some((a) => raw.nodes.get(a)?.registered);
     const rows = e.items.map((i) => `
@@ -161,7 +163,7 @@
         <td class="num mono small">${alpha && i.alpha != null ? fmt(i.alpha) + " α<br>" : ""}${fmt(i.amount)} τ</td>
         <td class="small"><a href="/transfers/${i.transfer_id}">${!related ? "details" : i.approved ? "✔ approved" : '<span class="warn-text">unapproved</span>'}</a></td></tr>`).join("");
     $("panel").innerHTML = `
-      <h3>${name(e.from)} → ${name(e.to)}</h3>
+      <h3>${named(e.from)} → ${named(e.to)}</h3>
       <p><span class="tag ${e.kind}">${alpha ? "Alpha" : "TAO"}</span> ${e.count} transfer(s) · <b>${fmt(e.amount)} τ</b>${alpha ? ` · ${fmt(e.alpha)} α` : ""}
         ${e.netuids.length ? `<br><span class="small muted">subnets ${e.netuids.map((n) => "SN" + n).join(", ")}</span>` : ""}</p>
       ${e.unapproved ? `<p><span class="badge warn">${e.unapproved}</span> unapproved between these wallets</p>` : ""}

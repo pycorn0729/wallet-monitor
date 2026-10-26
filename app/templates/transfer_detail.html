@@ -8,10 +8,10 @@
 <div class="grid2">
 <section class="card">
   <table class="kv">
-    <tr><th>From</th><td>{{ m.addr(t.from_address, wallets) }} <div class="mono small muted">{{ t.from_address }}</div></td></tr>
-    <tr><th>To</th><td>{{ m.addr(t.to_address, wallets) }} <div class="mono small muted">{{ t.to_address }}</div></td></tr>
+    <tr><th>From</th><td>{{ m.addr(t.from_address, wallets) }} <div class="mono small muted">{{ t.from_address }}{{ m.copy(t.from_address) }}</div></td></tr>
+    <tr><th>To</th><td>{{ m.addr(t.to_address, wallets) }} <div class="mono small muted">{{ t.to_address }}{{ m.copy(t.to_address) }}</div></td></tr>
     <tr><th>Amount</th><td>{{ m.amount(t) }}</td></tr>
-    {% if t.hotkey %}<tr><th>Hotkey</th><td class="mono small">{{ t.hotkey }}</td></tr>{% endif %}
+    {% if t.hotkey %}<tr><th>Hotkey</th><td class="mono small">{{ t.hotkey }}{{ m.copy(t.hotkey) }}</td></tr>{% endif %}
     <tr><th>Time (UTC)</th><td>{{ t.timestamp|dt }}</td></tr>
     <tr><th>Block</th><td><a href="https://taostats.io/block/{{ t.block_number }}" target="_blank" rel="noopener">#{{ t.block_number }}</a> · event {{ t.event_index }}</td></tr>
     <tr><th>Extrinsic</th><td class="mono small">{% if t.extrinsic_id %}<a href="https://taostats.io/extrinsic/{{ t.extrinsic_id }}" target="_blank" rel="noopener">{{ t.extrinsic_id }}</a>{% else %}–{% endif %}

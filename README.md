@@ -64,7 +64,9 @@ Run a single uvicorn worker. The background tasks run inside the app process, so
 | `ARCHIVE_URL` | opentensor archive | Archive node used by the history backfill. |
 | `MIN_TRANSFER_TAO` | `0.2` | Transfers worth less than this are not stored or shown. Raising it hides smaller stored transfers; lowering it only affects new ones. |
 | `BACKFILL_DAYS` | `7` | How far back the one-off backfill scans. Raising it later extends the scan. |
-| `BACKFILL_CONCURRENCY` | `20` | Blocks fetched in parallel by the backfill. |
+| `BACKFILL_BATCH_SIZE` | `100` | Blocks per backfill step (one progress save per step). |
+| `BACKFILL_CONCURRENCY` | `10` | Blocks the backfill fetches at once. Halved automatically while the archive node rate-limits, then restored. |
+| `WATCHER_CONCURRENCY` | `5` | Blocks the live watcher fetches at once while catching up after downtime. |
 | `TAOSTATS_API_KEY` | empty | Optional; only enables "Import history" on wallet pages. |
 | `WATCHER_START_BLOCK` | empty | Block to start scanning from on first run. Empty means the current finalized head. After the first run, progress is kept in the DB. |
 | `WATCHER_ENABLED` | `true` | Turns off both background tasks, for example for a read-only replica. |
@@ -75,6 +77,7 @@ Run a single uvicorn worker. The background tasks run inside the app process, so
 
 - **Stake transfer amounts.** The amount in `StakeTransferred` is the TAO value moved. The alpha amount comes from the `transfer_stake` call. If the call was wrapped in a batch or proxy, the alpha amount is left empty.
 - **Staked balance** is the sum of each position's alpha × the current subnet alpha price. This is a spot value; the TAO you would get from unstaking can be lower because of slippage.
+- **Chain request budget.** Scanning costs about 1.4 requests per block: block hashes are fetched for a whole batch in one call, the runtime version is checked at the batch's two ends rather than per block, and the timestamp, extrinsic hashes and alpha amounts all come from the one raw-block download (made only for blocks that contain a transfer). A balance refresh is a fixed handful of requests whatever the number of wallets: one for all free balances, one for all stake positions, and one price per subnet held.
 - **Database size.** About 3 transfers per block pass the 0.2 τ default, roughly 150k rows a week. That's fine for SQLite.
 - **Taostats API.** The optional history import uses the new Taostats v1 API (`/v1/transfers` and `/v1/subnets/stake-events?is_transfer=true`). The legacy `/api/...` endpoints stop working on 2026-11-09. Responses are cached for `WM_TAOSTATS_CACHE_SECONDS` (default 300) to stay within rate limits.
 - **Sessions and CSRF.** Sessions are signed cookies with `SameSite=Lax`. Serve the app over HTTPS behind a reverse proxy in production.

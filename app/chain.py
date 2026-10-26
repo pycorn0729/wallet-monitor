@@ -85,10 +85,58 @@ def _call_alpha_amount(call: dict) -> int | None:
     return None
 
 
-async def scan_block(substrate, number: int, min_rao: int) -> list[dict]:
-    """All qualifying transfers in one block, as Transfer row dicts."""
-    block_hash = await substrate.get_block_hash(number)
-    events = await substrate.get_events(block_hash)
+def _read_compact(data: bytes, i: int) -> tuple[int, int]:
+    """SCALE compact integer at data[i]; returns (value, next offset)."""
+    mode = data[i] & 3
+    if mode == 0:
+        return data[i] >> 2, i + 1
+    if mode == 1:
+        return int.from_bytes(data[i:i + 2], "little") >> 2, i + 2
+    if mode == 2:
+        return int.from_bytes(data[i:i + 4], "little") >> 2, i + 4
+    n = (data[i] >> 2) + 4
+    return int.from_bytes(data[i + 1:i + 1 + n], "little"), i + 1 + n
+
+
+def _inherent_timestamp(raw_extrinsic: str) -> datetime | None:
+    """Block time from the Timestamp.set inherent (always the block's first extrinsic),
+    read straight from its bytes instead of querying storage. None if it doesn't look right."""
+    try:
+        data = bytes.fromhex(raw_extrinsic.removeprefix("0x"))
+        _, i = _read_compact(data, 0)  # length prefix
+        if data[i] & 0x80:  # signed => not an inherent
+            return None
+        ms, _ = _read_compact(data, i + 3)  # skip version byte + 2-byte call index
+    except (ValueError, IndexError):
+        return None
+    if not 1_500_000_000_000 < ms < 4_000_000_000_000:  # sanity: 2017..2096 in ms
+        return None
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).replace(tzinfo=None)
+
+
+async def _block_hashes(substrate, numbers: list[int]) -> list[str]:
+    """All hashes in one RPC (chain_getBlockHash accepts a list of numbers)."""
+    hashes = (await substrate.rpc_request("chain_getBlockHash", [numbers]))["result"]
+    if not isinstance(hashes, list) or len(hashes) != len(numbers) or not all(hashes):
+        raise RuntimeError(f"node returned no hash for some of blocks {numbers[0]}..{numbers[-1]}")
+    return hashes
+
+
+async def _runtimes(substrate, hashes: list[str]) -> list:
+    """Runtime (metadata) for each block. Resolving it costs two RPCs per block, so check only
+    the range ends: the version can only go up, so equal ends mean the whole range shares it."""
+    first = await substrate.init_runtime(block_hash=hashes[0])
+    last = await substrate.init_runtime(block_hash=hashes[-1]) if len(hashes) > 1 else first
+    if first.runtime_version == last.runtime_version:
+        return [first] * len(hashes)
+    log.info("runtime upgrade %s -> %s inside scanned range", first.runtime_version, last.runtime_version)
+    return [await substrate.init_runtime(block_hash=h) for h in hashes]
+
+
+async def scan_block(substrate, number: int, block_hash: str, runtime, min_rao: int) -> list[dict]:
+    """All qualifying transfers in one block, as Transfer row dicts.
+    Costs one RPC, plus one more (the raw block) only when the block has a qualifying transfer."""
+    events = _value(await substrate.query("System", "Events", block_hash=block_hash, runtime=runtime))
     hits = []
     for position, ev in enumerate(events):
         try:
@@ -109,20 +157,16 @@ async def scan_block(substrate, number: int, min_rao: int) -> list[dict]:
     if not hits:
         return []
 
-    # Extrinsic hash = blake2b-256 of the encoded extrinsic; cheaper than decoding the block.
-    raw = await substrate.rpc_request("chain_getBlock", [block_hash])
-    raw_extrinsics = raw["result"]["block"]["extrinsics"]
-    timestamp = None
-    try:
-        ms = _value(await substrate.query("Timestamp", "Now", block_hash=block_hash))
-        timestamp = datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).replace(tzinfo=None)
-    except Exception:
-        log.warning("no timestamp for block %d", number, exc_info=True)
-
-    decoded = None
-    if any(r["kind"] == KIND_STAKE_TRANSFER for r in hits):
-        block = await substrate.get_block(block_hash)  # decoded, for the alpha amount
-        decoded = block.get("extrinsics", []) if block else []
+    # One fetch of the raw block gives extrinsic hashes (blake2b-256 of the encoded
+    # extrinsic), the timestamp (first inherent) and, decoded locally, alpha amounts.
+    raw_extrinsics = (await substrate.rpc_request("chain_getBlock", [block_hash]))["result"]["block"]["extrinsics"]
+    timestamp = _inherent_timestamp(raw_extrinsics[0]) if raw_extrinsics else None
+    if timestamp is None:
+        try:
+            ms = _value(await substrate.query("Timestamp", "Now", block_hash=block_hash, runtime=runtime))
+            timestamp = datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).replace(tzinfo=None)
+        except Exception:
+            log.warning("no timestamp for block %d", number, exc_info=True)
 
     for row in hits:
         row.update(block_number=number, block_hash=block_hash, timestamp=timestamp, source="chain")
@@ -131,18 +175,33 @@ async def scan_block(substrate, number: int, min_rao: int) -> list[dict]:
             row["extrinsic_id"] = None
             continue
         row["extrinsic_id"] = f"{number}-{xi:04d}"
-        if xi < len(raw_extrinsics):
-            data = bytes.fromhex(raw_extrinsics[xi].removeprefix("0x"))
-            row["extrinsic_hash"] = "0x" + hashlib.blake2b(data, digest_size=32).hexdigest()
-        if row["kind"] == KIND_STAKE_TRANSFER and decoded and xi < len(decoded):
-            ext = _value(decoded[xi])
-            if isinstance(ext, dict):
-                row["alpha_rao"] = _call_alpha_amount(ext.get("call"))
+        if xi >= len(raw_extrinsics):
+            continue
+        data = bytes.fromhex(raw_extrinsics[xi].removeprefix("0x"))
+        row["extrinsic_hash"] = "0x" + hashlib.blake2b(data, digest_size=32).hexdigest()
+        if row["kind"] == KIND_STAKE_TRANSFER:
+            try:
+                ext = _value(await substrate.decode_scale("Extrinsic", raw_extrinsics[xi], runtime=runtime))
+                row["alpha_rao"] = _call_alpha_amount(ext.get("call")) if isinstance(ext, dict) else None
+            except Exception:
+                log.debug("could not decode extrinsic %s", row["extrinsic_id"], exc_info=True)
     return hits
 
 
-async def scan_range(substrate, numbers, min_rao: int) -> list[dict]:
-    results = await asyncio.gather(*(scan_block(substrate, n, min_rao) for n in numbers))
+async def scan_range(substrate, numbers, min_rao: int, parallel: int) -> list[dict]:
+    """Scan consecutive blocks with at most `parallel` blocks in flight at once."""
+    numbers = list(numbers)
+    if not numbers:
+        return []
+    hashes = await _block_hashes(substrate, numbers)
+    runtimes = await _runtimes(substrate, hashes)
+    gate = asyncio.Semaphore(parallel)
+
+    async def one(n, h, rt):
+        async with gate:
+            return await scan_block(substrate, n, h, rt, min_rao)
+
+    results = await asyncio.gather(*(one(n, h, rt) for n, h, rt in zip(numbers, hashes, runtimes)))
     return [row for block_rows in results for row in block_rows]
 
 
@@ -190,7 +249,9 @@ class ChainWatcher:
 
         while last < head:
             end = min(head, last + self.settings.watcher_batch_size)
-            rows = await scan_range(substrate, range(last + 1, end + 1), self.settings.min_transfer_rao)
+            rows = await scan_range(
+                substrate, range(last + 1, end + 1), self.settings.min_transfer_rao, self.settings.watcher_concurrency
+            )
             added = await asyncio.to_thread(_store, rows)
             with SessionLocal() as db:
                 kv_set(db, LAST_BLOCK_KEY, end)
@@ -250,25 +311,26 @@ class HistoryBackfill:
         self.status.update(state="running", top=top, stop=stop, next=nxt, error=None)
         log.info("history backfill: blocks %d..%d (next %d)", stop, top - 1, nxt)
 
-        max_batch = batch = self.settings.backfill_concurrency
+        batch = self.settings.backfill_batch_size
+        max_parallel = parallel = self.settings.backfill_concurrency
         calm = 0
         while nxt >= stop:
             low = max(stop, nxt - batch + 1)
             try:
-                rows = await scan_range(substrate, range(low, nxt + 1), self.settings.min_transfer_rao)
+                rows = await scan_range(substrate, range(low, nxt + 1), self.settings.min_transfer_rao, parallel)
             except SubstrateRequestException as e:
                 if "rate limit" not in str(e).lower():
                     raise
                 # Archive nodes throttle historical queries: back off, then retry the same range slower.
-                batch, calm = max(2, batch // 2), 0
-                self.status["throttled"] = batch
-                log.warning("archive node rate limit; retrying with %d parallel blocks", batch)
+                parallel, calm = max(1, parallel // 2), 0
+                self.status["throttled"] = parallel
+                log.warning("archive node rate limit; retrying with %d parallel blocks", parallel)
                 await asyncio.sleep(20)
                 continue
             calm += 1
-            if batch < max_batch and calm >= 10:
-                batch, calm = min(max_batch, batch * 2), 0
-                self.status["throttled"] = batch if batch < max_batch else None
+            if parallel < max_parallel and calm >= 5:
+                parallel, calm = min(max_parallel, parallel * 2), 0
+                self.status["throttled"] = parallel if parallel < max_parallel else None
             await asyncio.to_thread(_store, rows)
             nxt = low - 1
             with SessionLocal() as db:
@@ -315,56 +377,68 @@ class BalanceRefresher:
                 await asyncio.sleep(30)
 
     async def refresh_all(self, substrate):
+        """Read every wallet against one pinned block with bulk calls: a handful of RPCs per
+        cycle, whatever the number of wallets (one extra per subnet with stake, for its price)."""
         with SessionLocal() as db:
             addresses = list(db.scalars(select(Wallet.address)))
-        prices: dict[int, int] = {}
-        for address in addresses:
-            try:
-                free, staked, positions = await self._read_wallet(substrate, address, prices)
-            except Exception:
-                log.exception("failed to read balance of %s", address)
-                continue
-            with SessionLocal() as db:
-                wallet = db.scalars(select(Wallet).where(Wallet.address == address)).first()
-                if wallet:
-                    wallet.free_rao = free
-                    wallet.staked_rao = staked
-                    wallet.stake_detail = json.dumps(positions)
-                    wallet.balance_updated_at = utcnow()
-                    db.commit()
+        if not addresses:
+            return
+        block_hash = await substrate.get_chain_finalised_head()
+        runtime = await substrate.init_runtime(block_hash=block_hash)
 
-    async def _alpha_price(self, substrate, netuid: int, cache: dict[int, int]) -> int:
-        """RAO of TAO per 1 alpha (root subnet is 1:1)."""
-        if netuid == 0:
-            return RAO_PER_TAO
-        if netuid not in cache:
-            cache[netuid] = int(_value(await substrate.runtime_call("SwapRuntimeApi", "current_alpha_price", [netuid])))
-        return cache[netuid]
+        keys = [
+            await substrate.create_storage_key("System", "Account", [a], block_hash=block_hash) for a in addresses
+        ]
+        free = {a: 0 for a in addresses}
+        for key, account in await substrate.query_multi(keys, block_hash=block_hash, runtime=runtime):
+            account = _value(account)
+            if account:
+                free[ss58.normalize(key.params[0])] = int(account["data"]["free"])
 
-    async def _read_wallet(self, substrate, address: str, prices: dict[int, int]):
-        account = _value(await substrate.query("System", "Account", [address]))
-        free = int(account["data"]["free"])
-
-        infos = _value(
-            await substrate.runtime_call("StakeInfoRuntimeApi", "get_stake_info_for_coldkey", [address])
-        ) or []
-        positions = []
-        staked = 0
-        for info in infos:
-            alpha = int(info["stake"])
-            if alpha <= 0:
-                continue
-            netuid = int(info["netuid"])
-            price = await self._alpha_price(substrate, netuid, prices)
-            tao_value = alpha * price // RAO_PER_TAO
-            staked += tao_value
-            positions.append(
-                {
-                    "netuid": netuid,
-                    "hotkey": ss58.normalize(info["hotkey"]),
-                    "alpha": alpha / RAO_PER_TAO,
-                    "tao": tao_value / RAO_PER_TAO,
-                }
+        stake_lists = _value(
+            await substrate.runtime_call(
+                "StakeInfoRuntimeApi", "get_stake_info_for_coldkeys", [addresses], block_hash=block_hash
             )
-        positions.sort(key=lambda p: -p["tao"])
-        return free, staked, positions
+        ) or []
+        stakes = {ss58.normalize(coldkey): infos or [] for coldkey, infos in stake_lists}
+
+        netuids = {int(i["netuid"]) for infos in stakes.values() for i in infos if int(i["stake"]) > 0}
+        prices = await self._alpha_prices(substrate, netuids, block_hash)
+
+        updates = {}
+        for address in addresses:
+            positions, staked = [], 0
+            for info in stakes.get(address, []):
+                alpha = int(info["stake"])
+                if alpha <= 0:
+                    continue
+                netuid = int(info["netuid"])
+                tao_value = alpha * prices[netuid] // RAO_PER_TAO
+                staked += tao_value
+                positions.append(
+                    {
+                        "netuid": netuid,
+                        "hotkey": ss58.normalize(info["hotkey"]),
+                        "alpha": alpha / RAO_PER_TAO,
+                        "tao": tao_value / RAO_PER_TAO,
+                    }
+                )
+            positions.sort(key=lambda p: -p["tao"])
+            updates[address] = (free[address], staked, positions)
+
+        with SessionLocal() as db:
+            for wallet in db.scalars(select(Wallet).where(Wallet.address.in_(list(updates)))):
+                wallet.free_rao, wallet.staked_rao, positions = updates[wallet.address]
+                wallet.stake_detail = json.dumps(positions)
+                wallet.balance_updated_at = utcnow()
+            db.commit()
+
+    async def _alpha_prices(self, substrate, netuids: set[int], block_hash: str) -> dict[int, int]:
+        """RAO of TAO per 1 alpha for each subnet (root subnet is 1:1), at the pinned block."""
+        prices = {0: RAO_PER_TAO}
+        todo = sorted(n for n in netuids if n != 0)
+        results = await asyncio.gather(
+            *(substrate.runtime_call("SwapRuntimeApi", "current_alpha_price", [n], block_hash=block_hash) for n in todo)
+        )
+        prices.update({n: int(_value(r)) for n, r in zip(todo, results)})
+        return prices

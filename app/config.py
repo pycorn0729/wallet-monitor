@@ -23,10 +23,12 @@ class Settings(BaseSettings):
     watcher_start_block: int | None = None
     watcher_poll_seconds: int = 6
     watcher_batch_size: int = 20
+    watcher_concurrency: int = 5  # blocks fetched at once while catching up
 
     # How far back the one-off history backfill scans (7200 blocks ≈ 1 day).
     backfill_days: int = 7
-    backfill_concurrency: int = 20
+    backfill_batch_size: int = 100  # blocks per progress/commit step
+    backfill_concurrency: int = 10  # blocks fetched at once (halved automatically when rate-limited)
 
     balance_refresh_seconds: int = 300
 

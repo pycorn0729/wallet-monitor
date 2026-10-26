@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m with context %}
 {% block title %}Address labels{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -22,7 +23,7 @@
     <tr>
       <td><span class="lname">{{ l.label }}</span>
         {% if wallets.get(l.address) %}<div class="small muted">also registered as {{ wallets[l.address].name }}</div>{% endif %}</td>
-      <td class="mono small">{{ l.address }}</td>
+      <td class="mono small">{{ l.address }}{{ m.copy(l.address) }}</td>
       <td class="small clip" title="{{ l.note }}">{{ l.note }}</td>
       <td class="small muted nowrap">{{ l.created_by.username if l.created_by else '?' }} · {{ l.created_at.strftime('%Y-%m-%d') }}</td>
       <td class="nowrap">

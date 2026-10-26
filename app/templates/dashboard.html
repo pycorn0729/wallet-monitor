@@ -40,7 +40,7 @@
       <thead><tr><th>Wallet</th><th>Owner</th><th class="num">Total <span class="unit">τ</span></th><th class="num">Unappr.</th></tr></thead>
       <tbody>
       {% for w in top_wallets %}
-        <tr><td><a href="/wallets/{{ w.id }}">{{ w.name }}</a> {{ m.ts(w.address) }}</td><td>{{ w.owner.username }}</td>
+        <tr><td><a href="/wallets/{{ w.id }}">{{ w.name }}</a> {{ m.ts(w.address) }}{{ m.copy(w.address) }}</td><td>{{ w.owner.username }}</td>
           <td class="num mono">{{ w.total|tao(2) }}</td>
           <td class="num">{% set n = unapproved.get(w.address, 0) %}{% if n %}<a class="badge warn" href="/transfers?wallet={{ w.id }}&status=unapproved">{{ n }}</a>{% else %}<span class="muted">0</span>{% endif %}</td></tr>
       {% else %}<tr><td colspan="4" class="muted center">—</td></tr>{% endfor %}
