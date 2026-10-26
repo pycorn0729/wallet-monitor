@@ -1,15 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m with context %}
-{% block title %}Dashboard<script>
-  // Refresh the sync card in place.
-  setInterval(async () => {
-    try {
-      const resp = await fetch("/sync", { headers: { Accept: "text/html" } });
-      if (resp.ok && !resp.redirected) document.getElementById("sync").outerHTML = await resp.text();
-    } catch (_) {}
-  }, 10000);
-</script>
-{% endblock %}
+{% block title %}Dashboard{% endblock %}
 {% block content %}
 <h1>Dashboard</h1>
 
