@@ -6,6 +6,9 @@
   {%- set w = wallets.get(address) -%}
   {%- if w -%}
     <a href="/wallets/{{ w.id }}" class="wname" title="{{ address }} · owner {{ w.owner.username }}">{{ w.name }}</a> {{ ts(address) }}
+  {%- elif address_labels and address_labels.get(address) -%}
+    {%- set l = address_labels[address] -%}
+    <span class="lname" title="{{ address }}{{ ' · ' ~ l.note if l.note }}">{{ l.label }}</span> {{ ts(address) }}
   {%- else -%}
     <span class="mono ext" title="{{ address }}">{{ address|short }}</span> {{ ts(address) }}
   {%- endif -%}

@@ -1,29 +1,35 @@
 """Background tasks talking to the Bittensor (subtensor) chain.
 
-* ChainWatcher scans every finalized block for Balances.Transfer and
-  SubtensorModule.StakeTransferred events and stores those that touch a
-  registered wallet.
+* ChainWatcher follows the finalized head and stores every Balances.Transfer
+  and SubtensorModule.StakeTransferred event at or above the minimum amount.
+* HistoryBackfill scans the past `backfill_days` once, from an archive node,
+  walking backwards from where live syncing started.
 * BalanceRefresher periodically reads free balance and stake positions
   (valued in TAO at the current subnet alpha price) for every wallet.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 from datetime import datetime, timezone
 
 from async_substrate_interface import AsyncSubstrateInterface
+from async_substrate_interface.errors import SubstrateRequestException
 from sqlalchemy import select
 
 from . import ss58
 from .config import Settings
 from .db import SessionLocal
 from .models import KIND_STAKE_TRANSFER, KIND_TRANSFER, RAO_PER_TAO, Wallet, utcnow
-from .services import kv_get, kv_set, store_transfers, tracked_addresses
+from .services import kv_get, kv_set, store_transfers
 
 log = logging.getLogger("wallet_monitor.chain")
 
 LAST_BLOCK_KEY = "watcher.last_block"
+BACKFILL_TOP_KEY = "backfill.top"  # block the backfill started below
+BACKFILL_NEXT_KEY = "backfill.next"  # next block to scan (walking down)
+BLOCKS_PER_DAY = 7200  # 12 s blocks
 
 
 def _value(obj):
@@ -79,6 +85,76 @@ def _call_alpha_amount(call: dict) -> int | None:
     return None
 
 
+async def scan_block(substrate, number: int, min_rao: int) -> list[dict]:
+    """All qualifying transfers in one block, as Transfer row dicts."""
+    block_hash = await substrate.get_block_hash(number)
+    events = await substrate.get_events(block_hash)
+    hits = []
+    for position, ev in enumerate(events):
+        try:
+            row = parse_event(ev)
+        except Exception:
+            log.warning("could not parse event in block %d: %r", number, ev, exc_info=True)
+            continue
+        if not row or row["amount_rao"] < min_rao:
+            continue
+        # Staking/unstaking shows up as transfers to/from pallet accounts; those aren't user transfers.
+        if ss58.is_module_account(row["from_address"]) or ss58.is_module_account(row["to_address"]):
+            continue
+        # Position in the block's event list. (The event's own "event_index" field is the
+        # pallet's event-variant number, identical for every transfer of a kind.)
+        row["event_index"] = position
+        row["extrinsic_index"] = ev.get("extrinsic_idx")
+        hits.append(row)
+    if not hits:
+        return []
+
+    # Extrinsic hash = blake2b-256 of the encoded extrinsic; cheaper than decoding the block.
+    raw = await substrate.rpc_request("chain_getBlock", [block_hash])
+    raw_extrinsics = raw["result"]["block"]["extrinsics"]
+    timestamp = None
+    try:
+        ms = _value(await substrate.query("Timestamp", "Now", block_hash=block_hash))
+        timestamp = datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).replace(tzinfo=None)
+    except Exception:
+        log.warning("no timestamp for block %d", number, exc_info=True)
+
+    decoded = None
+    if any(r["kind"] == KIND_STAKE_TRANSFER for r in hits):
+        block = await substrate.get_block(block_hash)  # decoded, for the alpha amount
+        decoded = block.get("extrinsics", []) if block else []
+
+    for row in hits:
+        row.update(block_number=number, block_hash=block_hash, timestamp=timestamp, source="chain")
+        xi = row["extrinsic_index"]
+        if xi is None:
+            row["extrinsic_id"] = None
+            continue
+        row["extrinsic_id"] = f"{number}-{xi:04d}"
+        if xi < len(raw_extrinsics):
+            data = bytes.fromhex(raw_extrinsics[xi].removeprefix("0x"))
+            row["extrinsic_hash"] = "0x" + hashlib.blake2b(data, digest_size=32).hexdigest()
+        if row["kind"] == KIND_STAKE_TRANSFER and decoded and xi < len(decoded):
+            ext = _value(decoded[xi])
+            if isinstance(ext, dict):
+                row["alpha_rao"] = _call_alpha_amount(ext.get("call"))
+    return hits
+
+
+async def scan_range(substrate, numbers, min_rao: int) -> list[dict]:
+    results = await asyncio.gather(*(scan_block(substrate, n, min_rao) for n in numbers))
+    return [row for block_rows in results for row in block_rows]
+
+
+def _store(rows: list[dict]) -> int:
+    with SessionLocal() as db:
+        return store_transfers(db, rows) if rows else 0
+
+
+async def _finalized_head(substrate) -> int:
+    return await substrate.get_block_number(await substrate.get_chain_finalised_head())
+
+
 class ChainWatcher:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -99,9 +175,8 @@ class ChainWatcher:
                 self.status.update(state="error", error=str(e))
                 await asyncio.sleep(15)
 
-    async def _sync(self, substrate: AsyncSubstrateInterface):
-        finalized = await substrate.get_chain_finalised_head()
-        head = await substrate.get_block_number(finalized)
+    async def _sync(self, substrate):
+        head = await _finalized_head(substrate)
         self.status["head"] = head
 
         with SessionLocal() as db:
@@ -114,15 +189,10 @@ class ChainWatcher:
             last = head - 1
 
         while last < head:
-            with SessionLocal() as db:
-                addresses = tracked_addresses(db)
             end = min(head, last + self.settings.watcher_batch_size)
-            results = await asyncio.gather(
-                *(self._scan_block(substrate, n, addresses) for n in range(last + 1, end + 1))
-            )
-            rows = [row for block_rows in results for row in block_rows]
+            rows = await scan_range(substrate, range(last + 1, end + 1), self.settings.min_transfer_rao)
+            added = await asyncio.to_thread(_store, rows)
             with SessionLocal() as db:
-                added = store_transfers(db, rows) if rows else 0
                 kv_set(db, LAST_BLOCK_KEY, end)
                 db.commit()
             if added:
@@ -130,50 +200,86 @@ class ChainWatcher:
             last = end
             self.status.update(last_block=last, state="syncing" if last < head else "live")
 
-    async def _scan_block(self, substrate, number: int, addresses: set[str]) -> list[dict]:
-        if not addresses:
-            return []
-        block_hash = await substrate.get_block_hash(number)
-        events = await substrate.get_events(block_hash)
-        hits = []
-        for position, ev in enumerate(events):
+
+class HistoryBackfill:
+    """One-off scan of the past `backfill_days`, newest first, resumable across restarts."""
+
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.status: dict = {
+            "state": "starting", "next": None, "top": None, "stop": None,
+            "error": None, "oldest_time": None, "throttled": None,
+        }
+
+    @property
+    def progress(self) -> float | None:
+        s = self.status
+        if s["top"] is None or s["stop"] is None or s["next"] is None:
+            return None
+        total = s["top"] - s["stop"]
+        return 1.0 if total <= 0 else min(1.0, (s["top"] - 1 - s["next"]) / total)
+
+    async def run(self):
+        while True:
             try:
-                row = parse_event(ev)
-            except Exception:
-                log.warning("could not parse event in block %d: %r", number, ev, exc_info=True)
-                continue
-            if not row or (row["from_address"] not in addresses and row["to_address"] not in addresses):
-                continue
-            idx = ev.get("event_index")
-            row["event_index"] = idx if isinstance(idx, int) else position
-            row["extrinsic_index"] = ev.get("extrinsic_idx")
-            hits.append(row)
-        if not hits:
-            return []
+                async with AsyncSubstrateInterface(self.settings.archive_url, ss58_format=42) as substrate:
+                    await self._backfill(substrate)
+                    return
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.exception("history backfill error")
+                self.status.update(state="error", error=str(e))
+                await asyncio.sleep(30)
 
-        block = await substrate.get_block(block_hash)
-        extrinsics = block.get("extrinsics", []) if block else []
-        timestamp = None
-        try:
-            ms = _value(await substrate.query("Timestamp", "Now", block_hash=block_hash))
-            timestamp = datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).replace(tzinfo=None)
-        except Exception:
-            log.warning("no timestamp for block %d", number, exc_info=True)
+    async def _backfill(self, substrate):
+        with SessionLocal() as db:
+            top = kv_get(db, BACKFILL_TOP_KEY)
+            nxt = kv_get(db, BACKFILL_NEXT_KEY)
+            if top is None:
+                # Start just above where live syncing is, so the two ranges meet.
+                live = kv_get(db, LAST_BLOCK_KEY)
+                top = int(live) + 1 if live else await _finalized_head(substrate) + 1
+                nxt = top - 1
+                kv_set(db, BACKFILL_TOP_KEY, top)
+                kv_set(db, BACKFILL_NEXT_KEY, nxt)
+                db.commit()
+        top, nxt = int(top), int(nxt)
+        # Recomputed every start, so raising WM_BACKFILL_DAYS extends the scan.
+        stop = max(1, top - self.settings.backfill_days * BLOCKS_PER_DAY)
+        self.status.update(state="running", top=top, stop=stop, next=nxt, error=None)
+        log.info("history backfill: blocks %d..%d (next %d)", stop, top - 1, nxt)
 
-        for row in hits:
-            row.update(block_number=number, block_hash=block_hash, timestamp=timestamp, source="chain")
-            xi = row["extrinsic_index"]
-            if xi is None:
-                row["extrinsic_id"] = None
+        max_batch = batch = self.settings.backfill_concurrency
+        calm = 0
+        while nxt >= stop:
+            low = max(stop, nxt - batch + 1)
+            try:
+                rows = await scan_range(substrate, range(low, nxt + 1), self.settings.min_transfer_rao)
+            except SubstrateRequestException as e:
+                if "rate limit" not in str(e).lower():
+                    raise
+                # Archive nodes throttle historical queries: back off, then retry the same range slower.
+                batch, calm = max(2, batch // 2), 0
+                self.status["throttled"] = batch
+                log.warning("archive node rate limit; retrying with %d parallel blocks", batch)
+                await asyncio.sleep(20)
                 continue
-            row["extrinsic_id"] = f"{number}-{xi:04d}"
-            if xi < len(extrinsics):
-                ext = _value(extrinsics[xi])
-                if isinstance(ext, dict):
-                    row["extrinsic_hash"] = ext.get("extrinsic_hash")
-                    if row["kind"] == KIND_STAKE_TRANSFER:
-                        row["alpha_rao"] = _call_alpha_amount(ext.get("call"))
-        return hits
+            calm += 1
+            if batch < max_batch and calm >= 10:
+                batch, calm = min(max_batch, batch * 2), 0
+                self.status["throttled"] = batch if batch < max_batch else None
+            await asyncio.to_thread(_store, rows)
+            nxt = low - 1
+            with SessionLocal() as db:
+                kv_set(db, BACKFILL_NEXT_KEY, nxt)
+                db.commit()
+            stamps = [r["timestamp"] for r in rows if r.get("timestamp")]
+            if stamps:
+                self.status["oldest_time"] = min(stamps)
+            self.status["next"] = nxt
+        self.status.update(state="done")
+        log.info("history backfill finished down to block %d", stop)
 
 
 class BalanceRefresher:

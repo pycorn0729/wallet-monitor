@@ -318,3 +318,11 @@ dialog.modal::backdrop { background: rgba(8, 11, 20, 0.45); backdrop-filter: blu
 .icon-btn { width: 34px; height: 34px; min-height: 0; padding: 0; border-radius: 50%; border-color: transparent; background: transparent; color: var(--muted); font-size: 1.3rem; line-height: 1; }
 .icon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border); }
 @keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+/* ───────────── Admin address labels ───────────── */
+:root { --label: #0d9488; --label-bg: #e6f6f4; --node-label: #0f766e; --node-label-border: #14b8a6; }
+@media (prefers-color-scheme: dark) { :root { --label: #2dd4bf; --label-bg: rgba(45, 212, 191, 0.12); --node-label: #115e59; --node-label-border: #2dd4bf; } }
+.lname { display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 600; color: var(--label); background: var(--label-bg); padding: 0.05rem 0.5rem; border-radius: 6px; }
+.lname::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.lg.lab { background: var(--node-label); border: 1px solid var(--node-label-border); }
+.coverage { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; align-items: center; margin: -0.25rem 0 1rem; }

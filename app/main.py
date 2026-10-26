@@ -9,10 +9,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from .auth import Forbidden, NotAuthenticated
-from .chain import BalanceRefresher, ChainWatcher
+from .chain import BalanceRefresher, ChainWatcher, HistoryBackfill
 from .config import get_settings
 from .db import init_db
-from .routes import auth, dashboard, graph, transfers, users, wallets
+from .routes import auth, dashboard, graph, labels, transfers, users, wallets
 from .taostats import TaostatsClient
 from .web import flash, redirect, render
 
@@ -26,11 +26,13 @@ async def lifespan(app: FastAPI):
     app.state.taostats = TaostatsClient(settings)
     app.state.watcher = ChainWatcher(settings)
     app.state.balances = BalanceRefresher(settings)
+    app.state.backfill = HistoryBackfill(settings)
     tasks = []
     if settings.watcher_enabled:
         tasks = [
             asyncio.create_task(app.state.watcher.run(), name="chain-watcher"),
             asyncio.create_task(app.state.balances.run(), name="balance-refresher"),
+            asyncio.create_task(app.state.backfill.run(), name="history-backfill"),
         ]
     yield
     for t in tasks:
@@ -42,7 +44,7 @@ app = FastAPI(title="Bittensor Wallet Monitor", lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax", max_age=7 * 24 * 3600)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
-for module in (auth, dashboard, wallets, transfers, graph, users):
+for module in (auth, dashboard, wallets, transfers, graph, labels, users):
     app.include_router(module.router)
 
 

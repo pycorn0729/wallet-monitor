@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-change-me"
     database_url: str = "sqlite:///./wallet_monitor.db"
     subtensor_url: str = "wss://entrypoint-finney.opentensor.ai:443"
+    # Archive node (keeps historical state) used to backfill past blocks.
+    archive_url: str = "wss://archive.chain.opentensor.ai:443"
+
+    # Transfers worth less than this (TAO, or TAO value for stake transfers) are ignored.
+    min_transfer_tao: float = 0.2
 
     taostats_api_key: str = ""
     taostats_base_url: str = "https://api.taostats.io"
@@ -19,7 +24,15 @@ class Settings(BaseSettings):
     watcher_poll_seconds: int = 6
     watcher_batch_size: int = 20
 
+    # How far back the one-off history backfill scans (7200 blocks ≈ 1 day).
+    backfill_days: int = 7
+    backfill_concurrency: int = 20
+
     balance_refresh_seconds: int = 300
+
+    @property
+    def min_transfer_rao(self) -> int:
+        return int(self.min_transfer_tao * 10**9)
 
 
 @lru_cache

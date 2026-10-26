@@ -66,6 +66,15 @@ def normalize(value) -> str | None:
     raise ValueError(f"cannot interpret account id: {value!r}")
 
 
+def is_module_account(address: str) -> bool:
+    """Pallet-owned account (public key starts with b"modl"), e.g. Subtensor's per-subnet
+    accounts that staking/unstaking moves TAO through. Never a user's wallet."""
+    try:
+        return decode(address)[:4] == b"modl"
+    except ValueError:
+        return False
+
+
 def is_valid(address: str) -> bool:
     try:
         decode(address)

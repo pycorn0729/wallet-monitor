@@ -6,7 +6,8 @@ from .. import ss58
 from ..auth import Forbidden, current_user
 from ..db import get_db
 from ..models import KINDS, RAO_PER_TAO, Transfer, User, Wallet
-from ..services import stake_positions, store_transfers, unapproved_by_address, wallet_map
+from ..config import get_settings
+from ..services import stake_positions, store_transfers, unapproved_by_address, visible, wallet_map
 from ..taostats import TaostatsError
 from ..web import flash, redirect, render
 
@@ -114,7 +115,7 @@ def wallet_detail(
     wallet = _get_wallet(db, wallet_id)
     transfers = db.scalars(
         select(Transfer)
-        .where(or_(Transfer.from_address == wallet.address, Transfer.to_address == wallet.address))
+        .where(or_(Transfer.from_address == wallet.address, Transfer.to_address == wallet.address), visible())
         .order_by(Transfer.block_number.desc(), Transfer.event_index.desc())
         .limit(200)
     ).all()
@@ -187,6 +188,13 @@ async def wallet_import(
     except TaostatsError as e:
         flash(request, str(e), "error")
         return redirect(f"/wallets/{wallet_id}")
+    min_rao = get_settings().min_transfer_rao
+    rows = [
+        row for row in rows
+        if row["amount_rao"] >= min_rao
+        and not ss58.is_module_account(row["from_address"])
+        and not ss58.is_module_account(row["to_address"])
+    ]
     for row in rows:
         row["source"] = "taostats"
     added = store_transfers(db, rows)

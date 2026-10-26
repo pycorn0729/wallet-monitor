@@ -78,7 +78,11 @@ class Wallet(Base):
 
 
 class Transfer(Base):
-    """A fund movement on chain that touches at least one registered wallet."""
+    """A fund movement on chain (any address, above the minimum amount).
+
+    Transfers touching a registered wallet are the "related" ones that get
+    approvals, comments and unapproved counts; the rest feed the connection graph.
+    """
 
     __tablename__ = "transfers"
     __table_args__ = (UniqueConstraint("block_number", "event_index", name="uq_transfer_event"),)
@@ -139,6 +143,22 @@ class Comment(Base):
 
     transfer: Mapped[Transfer] = relationship(back_populates="comments")
     user: Mapped[User] = relationship()
+
+
+class AddressLabel(Base):
+    """Admin-defined name for any address (exchange, team member, …); display only."""
+
+    __tablename__ = "address_labels"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    address: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(128))
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    created_by: Mapped[User | None] = relationship()
 
 
 class KV(Base):

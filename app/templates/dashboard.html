@@ -61,5 +61,10 @@
   {% if watcher.error %} · <span class="err">{{ watcher.error }}</span>{% endif %}
   &nbsp;|&nbsp; Balances: <b>{{ balances.state }}</b>{% if balances.last_run %} · updated {{ balances.last_run|dt }} UTC{% endif %}
   {% if balances.error %} · <span class="err">{{ balances.error }}</span>{% endif %}
+  <br>History backfill: <b>{{ backfill.status.state }}</b>
+  {% if backfill.progress is not none %} · {{ (backfill.progress * 100)|round(1) }}% (blocks #{{ backfill.status.stop }}–#{{ backfill.status.top - 1 }}){% endif %}
+  {% if backfill.status.throttled %} · slowed by archive node rate limit{% endif %}
+  {% if backfill.status.oldest_time %} · reached {{ backfill.status.oldest_time|dt }} UTC{% endif %}
+  {% if backfill.status.error %} · <span class="err">{{ backfill.status.error }}</span>{% endif %}
 </section>
 {% endblock %}

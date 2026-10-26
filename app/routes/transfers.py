@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from ..auth import Forbidden, current_user, require_approver
 from ..db import get_db
 from ..models import KINDS, Comment, Transfer, User, Wallet, utcnow
-from ..services import wallet_map
+from ..services import related, visible, wallet_map
 from ..web import flash, redirect, render
 
 router = APIRouter()
@@ -47,7 +47,8 @@ def transfer_list(
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    query = select(Transfer)
+    # History is about registered wallets; the rest of the network only feeds the graph.
+    query = select(Transfer).where(related(), visible())
     if kind in KINDS:
         query = query.where(Transfer.kind == kind)
     if status == "unapproved":
@@ -98,6 +99,7 @@ def transfer_detail(
         "transfer_detail.html",
         t=transfer,
         wallets=wallet_map(db),
+        is_related=bool(_related_owner_ids(db, transfer)),
         can_comment=can_comment(db, user, transfer),
     )
 
@@ -111,6 +113,8 @@ def transfer_approve(
     db: Session = Depends(get_db),
 ):
     transfer = _get_transfer(db, transfer_id)
+    if not _related_owner_ids(db, transfer):
+        raise Forbidden("Only transfers involving a registered wallet can be approved.")
     _set_approval(transfer, approved == "1", user)
     db.commit()
     return redirect(request.headers.get("referer") or f"/transfers/{transfer_id}")
@@ -123,7 +127,7 @@ async def transfer_bulk_approve(
     form = await request.form()
     ids = [int(i) for i in form.getlist("ids") if str(i).isdigit()]
     approved = form.get("approved") == "1"
-    for transfer in db.scalars(select(Transfer).where(Transfer.id.in_(ids))):
+    for transfer in db.scalars(select(Transfer).where(Transfer.id.in_(ids), related())):
         _set_approval(transfer, approved, user)
     db.commit()
     flash(request, f"{'Approved' if approved else 'Un-approved'} {len(ids)} transfer(s).", "success")

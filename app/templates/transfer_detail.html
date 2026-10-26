@@ -3,7 +3,7 @@
 {% block title %}Transfer #{{ t.id }}{% endblock %}
 {% block content %}
 <p class="small"><a href="/transfers">← Transfers</a></p>
-<h1>{{ t.kind_label }} <span class="small">{{ m.approval(t) }}</span></h1>
+<h1>{{ t.kind_label }} {% if is_related %}<span class="small">{{ m.approval(t) }}</span>{% endif %}</h1>
 
 <div class="grid2">
 <section class="card">
@@ -17,7 +17,7 @@
     <tr><th>Extrinsic</th><td class="mono small">{% if t.extrinsic_id %}<a href="https://taostats.io/extrinsic/{{ t.extrinsic_id }}" target="_blank" rel="noopener">{{ t.extrinsic_id }}</a>{% else %}–{% endif %}
       {% if t.extrinsic_hash %}<div class="muted">{{ t.extrinsic_hash }}</div>{% endif %}</td></tr>
     <tr><th>Recorded from</th><td class="small">{{ t.source }} · {{ t.created_at|dt }}</td></tr>
-    <tr><th>Approval</th><td>{% if t.approved %}✔ approved by <b>{{ t.approved_by.username if t.approved_by else '?' }}</b> at {{ t.approved_at|dt }}{% else %}<span class="warn-text">Not approved yet</span>{% endif %}</td></tr>
+    {% if is_related %}<tr><th>Approval</th><td>{% if t.approved %}✔ approved by <b>{{ t.approved_by.username if t.approved_by else '?' }}</b> at {{ t.approved_at|dt }}{% else %}<span class="warn-text">Not approved yet</span>{% endif %}</td></tr>{% endif %}
   </table>
 </section>
 
@@ -36,7 +36,8 @@
     <textarea name="body" rows="3" required placeholder="Explain the purpose of this transfer…"></textarea>
     <button class="primary">Add comment</button>
   </form>
-  {% else %}<p class="small muted">Only owners of the wallets involved can comment.</p>{% endif %}
+  {% elif is_related %}<p class="small muted">Only owners of the wallets involved can comment.</p>
+  {% else %}<p class="small muted">This transfer doesn't involve a registered wallet, so it needs no approval or comments.</p>{% endif %}
 </section>
 </div>
 {% endblock %}

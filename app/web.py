@@ -7,11 +7,12 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from . import ss58
+from .config import get_settings
 from sqlalchemy import func, select
 
 from .db import SessionLocal
 from .models import KINDS, User
-from .services import unapproved_count
+from .services import label_map, unapproved_count
 
 templates_dir = Path(__file__).parent / "templates"
 
@@ -22,6 +23,7 @@ def _context(request: Request) -> dict:
     if user:
         with SessionLocal() as db:
             ctx["nav_unapproved"] = unapproved_count(db)
+            ctx["address_labels"] = label_map(db)
             if user.is_admin:
                 ctx["nav_pending_users"] = db.scalar(select(func.count(User.id)).where(User.is_approved.is_(False)))
     return ctx
@@ -44,6 +46,7 @@ templates.env.filters["tao"] = fmt_tao
 templates.env.filters["dt"] = fmt_dt
 templates.env.filters["short"] = ss58.short
 templates.env.globals["KINDS"] = KINDS
+templates.env.globals["config"] = get_settings()
 
 
 def flash(request: Request, message: str, category: str = "info") -> None:

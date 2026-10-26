@@ -18,18 +18,21 @@
 
   function nodeView(n) {
     const center = n.center || expanded.has(n.id);
-    let label = n.registered ? `${n.label}\n${n.owner}` : n.label;
+    let label = n.registered ? `${n.label}\n${n.owner}` : n.labeled ? `🏷 ${n.label}` : n.label;
     if (n.unapproved) label += `\n⚠ ${n.unapproved} unapproved`;
     return {
       id: n.id, label,
-      title: n.registered ? `${n.label} (${n.owner})\n${n.id}\nTotal ${fmt(n.total, 2)} τ` : n.id,
-      shape: n.registered ? "box" : "dot",
-      size: n.registered ? undefined : 10,
+      title: n.registered ? `${n.label} (${n.owner})\n${n.id}\nTotal ${fmt(n.total, 2)} τ`
+        : n.labeled ? `${n.label}${n.note ? "\n" + n.note : ""}\n${n.id}` : n.id,
+      shape: n.registered || n.labeled ? "box" : "dot",
+      size: n.registered || n.labeled ? undefined : 10,
       color: n.registered
         ? { background: css("--node-reg"), border: n.unapproved ? css("--warn") : css("--node-reg-border") }
-        : { background: css("--node-ext"), border: css("--node-ext-border") },
+        : n.labeled
+          ? { background: css("--node-label"), border: css("--node-label-border") }
+          : { background: css("--node-ext"), border: css("--node-ext-border") },
       borderWidth: center ? 4 : n.unapproved ? 3 : 1,
-      font: { color: n.registered ? css("--node-reg-text") : css("--text"), multi: false },
+      font: { color: n.registered || n.labeled ? "#ffffff" : css("--text"), multi: false },
     };
   }
 
@@ -64,20 +67,21 @@
 
   async function load(address) {
     const kinds = [$("k-transfer").checked && "transfer", $("k-stake").checked && "stake_transfer"].filter(Boolean);
-    const params = new URLSearchParams({ address: address || "", source: $("source").value, kinds: kinds.join(","), limit: $("limit").value });
+    if (!address) { toast("Pick a wallet or enter an address.", "error"); return; }
+    const params = new URLSearchParams({ address, kinds: kinds.join(","), limit: $("limit").value });
     $("graph-msg") && ($("graph-msg").textContent = "Loading…");
     const res = await fetch(`/api/graph?${params}`);
     const data = await res.json();
     if (!res.ok) { toast(data.detail || "Failed to load graph", "error"); $("graph-msg") && ($("graph-msg").textContent = ""); return; }
     $("graph-msg")?.remove();
-    if (address) expanded.add(address);
+    expanded.add(address);
     merge(data);
     if (!data.edges.length) {
       const what = kinds.map((k) => (k === "transfer" ? "TAO" : "alpha")).join(" or ");
-      const where = data.source === "taostats" ? "on Taostats" : "in the app database yet";
-      panelMsg(`No ${what} transfers found${address ? " for " + short(address) : ""} ${where}.`);
+      panelMsg(`No ${what} transfers found for ${short(address)} in the indexed range.`);
     }
-    if (address) network.focus(address, { scale: 1, animation: true });
+    if (data.truncated) toast(`Showing the latest ${data.rows} transfers — raise “Max transfers” to see more.`, "info");
+    network.focus(address, { scale: 1, animation: true });
   }
 
   function panelMsg(text) { $("panel").innerHTML = `<p class="muted">${esc(text)}</p>`; }
@@ -85,9 +89,14 @@
   function showNode(id) {
     const n = raw.nodes.get(id);
     if (!n) return;
+    const admin = !!$("graph").dataset.admin;
     $("panel").innerHTML = `
-      <h3>${esc(n.registered ? n.label : "External address")}</h3>
+      <h3>${n.registered ? esc(n.label) : n.labeled ? `<span class="lname">${esc(n.label)}</span>` : "Unlabeled address"}</h3>
       <p class="mono small">${esc(n.id)}</p>
+      ${n.tag && n.registered ? `<p class="small">Label: <span class="lname">${esc(n.tag)}</span></p>` : ""}
+      ${n.note ? `<p class="small">${esc(n.note)}</p>` : ""}
+      ${admin && !n.registered ? `<p><button class="small" id="label-btn" data-dialog="label-dialog"
+          data-address="${esc(n.id)}" data-label="${esc(n.tag || "")}" data-note="${esc(n.note || "")}">🏷 ${n.labeled ? "Edit label" : "Label this address"}</button></p>` : ""}
       ${n.registered ? `<p>Owner <b>${esc(n.owner)}</b> · total <b>${fmt(n.total, 4)} τ</b></p>
         ${n.purpose ? `<p class="small">${esc(n.purpose)}</p>` : ""}
         ${n.unapproved ? `<p><a class="badge warn" href="/transfers?wallet=${n.wallet_id}&status=unapproved">${n.unapproved} unapproved</a></p>` : ""}
@@ -100,14 +109,18 @@
   function showEdge(id) {
     const e = raw.edges.get(id);
     if (!e) return;
-    const name = (a) => { const n = raw.nodes.get(a); return n && n.registered ? esc(n.label) : `<span class="mono">${short(a)}</span>`; };
+    const name = (a) => {
+      const n = raw.nodes.get(a);
+      if (n && n.registered) return esc(n.label);
+      if (n && n.labeled) return `<span class="lname">${esc(n.label)}</span>`;
+      return `<span class="mono">${short(a)}</span>`;
+    };
     const alpha = e.kind === "stake_transfer";
+    const related = [e.from, e.to].some((a) => raw.nodes.get(a)?.registered);
     const rows = e.items.map((i) => `
       <tr><td class="small">${i.timestamp ? esc(i.timestamp.replace("T", " ").slice(0, 19)) : "#" + i.block}</td>
         <td class="num mono small">${alpha && i.alpha != null ? fmt(i.alpha) + " α<br>" : ""}${fmt(i.amount)} τ</td>
-        <td class="small">${i.transfer_id
-          ? `<a href="/transfers/${i.transfer_id}">${i.approved ? "✔" : '<span class="warn-text">unapproved</span>'}</a>`
-          : i.extrinsic_id ? `<a class="muted" href="https://taostats.io/extrinsic/${esc(i.extrinsic_id)}" target="_blank" rel="noopener">${esc(i.extrinsic_id)}</a>` : ""}</td></tr>`).join("");
+        <td class="small"><a href="/transfers/${i.transfer_id}">${!related ? "details" : i.approved ? "✔ approved" : '<span class="warn-text">unapproved</span>'}</a></td></tr>`).join("");
     $("panel").innerHTML = `
       <h3>${name(e.from)} → ${name(e.to)}</h3>
       <p><span class="tag ${e.kind}">${alpha ? "Alpha" : "TAO"}</span> ${e.count} transfer(s) · <b>${fmt(e.amount)} τ</b>${alpha ? ` · ${fmt(e.alpha)} α` : ""}
@@ -123,6 +136,5 @@
   $("graph-form").addEventListener("submit", (ev) => { ev.preventDefault(); load($("address").value.trim()); });
   $("clear").onclick = () => { nodes.clear(); edges.clear(); raw.nodes.clear(); raw.edges.clear(); expanded.clear(); panelMsg("Cleared."); };
 
-  const initial = $("address").value.trim();
-  if (initial || $("source").value === "db") load(initial);
+  if ($("address").value.trim()) load($("address").value.trim());
 })();
