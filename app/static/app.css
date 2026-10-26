@@ -125,3 +125,5 @@ details[open] > summary { margin-bottom: 0.75rem; }
 .lg.tao { background: var(--tao); } .lg.alpha { background: var(--alpha); } .lg.reg { background: var(--node-reg); } .lg.ext { background: var(--node-ext); border-radius: 50%; }
 @media (max-width: 900px) { .graph-layout { grid-template-columns: 1fr; } .grid2 { grid-template-columns: 1fr; } }
 body:not(:has(.topbar)) #toasts { top: 16px; }
+.ts-link { font-size: 0.8em; color: var(--muted); margin-left: 0.15rem; }
+.ts-link:hover { color: var(--accent); text-decoration: none; }

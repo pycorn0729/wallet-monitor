@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m with context %}
 {% block title %}Wallets{% endblock %}
 {% block content %}
 <h1>Wallets</h1>
@@ -39,7 +40,7 @@
   <tbody>
   {% for w in wallets %}
     <tr>
-      <td><a href="/wallets/{{ w.id }}"><b>{{ w.name }}</b></a></td>
+      <td><a href="/wallets/{{ w.id }}"><b>{{ w.name }}</b></a> {{ m.ts(w.address) }}</td>
       <td class="mono small" title="{{ w.address }}">{{ w.address|short }}</td>
       <td>{{ w.owner.username }}</td>
       <td class="small clip" title="{{ w.purpose }}">{{ w.purpose }}</td>

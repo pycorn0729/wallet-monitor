@@ -1,9 +1,13 @@
+{% macro ts(address) -%}
+  <a class="ts-link" href="https://taostats.io/account/{{ address }}" target="_blank" rel="noopener" title="Open on Taostats">↗</a>
+{%- endmacro %}
+
 {% macro addr(address, wallets) -%}
   {%- set w = wallets.get(address) -%}
   {%- if w -%}
-    <a href="/wallets/{{ w.id }}" class="wname" title="{{ address }} · owner {{ w.owner.username }}">{{ w.name }}</a>
+    <a href="/wallets/{{ w.id }}" class="wname" title="{{ address }} · owner {{ w.owner.username }}">{{ w.name }}</a> {{ ts(address) }}
   {%- else -%}
-    <span class="mono ext" title="{{ address }}">{{ address|short }}</span>
+    <span class="mono ext" title="{{ address }}">{{ address|short }}</span> {{ ts(address) }}
   {%- endif -%}
 {%- endmacro %}
 
