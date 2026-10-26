@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..auth import current_user
+from ..chain import sync_summary
 from ..db import get_db
 from ..models import RAO_PER_TAO, Transfer, User, Wallet
 from ..services import related, unapproved_by_address, unapproved_count, visible, wallet_map
@@ -47,7 +48,17 @@ def dashboard(request: Request, user: User = Depends(current_user), db: Session 
         top_wallets=top_wallets,
         unapproved=unapproved,
         wallets=wallet_map(db),
-        watcher=request.app.state.watcher.status,
+        sync=sync_summary(request.app.state.watcher, request.app.state.backfill),
         balances=request.app.state.balances.status,
-        backfill=request.app.state.backfill,
+    )
+
+
+@router.get("/sync")
+def sync_card(request: Request, user: User = Depends(current_user)):
+    """Just the chain sync card; the dashboard polls it."""
+    return render(
+        request,
+        "_sync.html",
+        sync=sync_summary(request.app.state.watcher, request.app.state.backfill),
+        balances=request.app.state.balances.status,
     )

@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import time
 from datetime import datetime, timezone
 
 from async_substrate_interface import AsyncSubstrateInterface
@@ -274,6 +275,7 @@ class HistoryBackfill:
             "state": "starting", "next": None, "top": None, "stop": None,
             "error": None, "oldest_time": None, "throttled": None,
         }
+        self._since: tuple[float, int] | None = None
 
     @property
     def progress(self) -> float | None:
@@ -282,6 +284,15 @@ class HistoryBackfill:
             return None
         total = s["top"] - s["stop"]
         return 1.0 if total <= 0 else min(1.0, (s["top"] - 1 - s["next"]) / total)
+
+    @property
+    def blocks_per_second(self) -> float | None:
+        """Average scan rate since this run started (throttling included)."""
+        since = self._since
+        if not since or self.status["next"] is None:
+            return None
+        elapsed, done = time.monotonic() - since[0], since[1] - self.status["next"]
+        return done / elapsed if elapsed > 60 and done > 0 else None
 
     async def run(self):
         while True:
@@ -312,6 +323,7 @@ class HistoryBackfill:
         # Recomputed every start, so raising WM_BACKFILL_DAYS extends the scan.
         stop = max(1, top - self.settings.backfill_days * BLOCKS_PER_DAY)
         self.status.update(state="running", top=top, stop=stop, next=nxt, error=None)
+        self._since = (time.monotonic(), nxt)  # for the scan rate shown on the dashboard
         log.info("history backfill: blocks %d..%d (next %d)", stop, top - 1, nxt)
 
         batch = self.settings.backfill_batch_size
@@ -345,6 +357,36 @@ class HistoryBackfill:
             self.status["next"] = nxt
         self.status.update(state="done")
         log.info("history backfill finished down to block %d", stop)
+
+
+def sync_summary(watcher: ChainWatcher, backfill: HistoryBackfill) -> dict:
+    """How far the database has caught up with the chain, for the dashboard."""
+    w, b = watcher.status, backfill.status
+    head, last = w["head"], w["last_block"]
+    behind = max(0, head - last) if head is not None and last is not None else None
+
+    total = done = left = eta = None
+    if b["top"] is not None and b["stop"] is not None and b["next"] is not None:
+        total = max(0, b["top"] - b["stop"])
+        left = max(0, b["next"] - b["stop"] + 1)
+        done = total - left
+        rate = backfill.blocks_per_second
+        if rate and left:
+            eta = left / rate
+
+    # Indexed range: from the backfill's lowest scanned block up to the live cursor.
+    low = b["next"] + 1 if b["next"] is not None else (b["top"] if b["top"] is not None else None)
+    high = last
+    covered = max(0, high - low + 1) if low is not None and high is not None else None
+    # Target: the whole backfill window up to the current finalized head.
+    target = head - b["stop"] + 1 if head is not None and b["stop"] is not None else None
+    return {
+        "live": {**w, "behind": behind},
+        "backfill": {**b, "progress": backfill.progress, "total": total, "done": done, "left": left, "eta": eta},
+        "coverage": {"low": low, "high": high, "blocks": covered,
+                     "days": covered / BLOCKS_PER_DAY if covered is not None else None,
+                     "progress": min(1.0, covered / target) if covered is not None and target else None},
+    }
 
 
 class BalanceRefresher:

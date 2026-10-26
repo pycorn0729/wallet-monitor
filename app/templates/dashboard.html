@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m with context %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Dashboard<script>
+  // Refresh the sync card in place.
+  setInterval(async () => {
+    try {
+      const resp = await fetch("/sync", { headers: { Accept: "text/html" } });
+      if (resp.ok && !resp.redirected) document.getElementById("sync").outerHTML = await resp.text();
+    } catch (_) {}
+  }, 10000);
+</script>
+{% endblock %}
 {% block content %}
 <h1>Dashboard</h1>
 
@@ -13,6 +22,8 @@
     <div class="label">Unapproved transfers</div><div class="value">{{ nav_unapproved }}</div>
     <div class="small">Review →</div></a>
 </section>
+
+{% include "_sync.html" %}
 
 <div class="grid2">
   <section class="card">
@@ -54,17 +65,13 @@
   {{ m.transfer_table(recent, wallets) }}
 </section>
 
-<section class="status small muted">
-  Chain watcher: <b>{{ watcher.state }}</b>
-  {% if watcher.last_block %} · scanned to #{{ watcher.last_block }}{% endif %}
-  {% if watcher.head %} · finalized head #{{ watcher.head }}{% endif %}
-  {% if watcher.error %} · <span class="err">{{ watcher.error }}</span>{% endif %}
-  &nbsp;|&nbsp; Balances: <b>{{ balances.state }}</b>{% if balances.last_run %} · updated {{ balances.last_run|dt }} UTC{% endif %}
-  {% if balances.error %} · <span class="err">{{ balances.error }}</span>{% endif %}
-  <br>History backfill: <b>{{ backfill.status.state }}</b>
-  {% if backfill.progress is not none %} · {{ (backfill.progress * 100)|round(1) }}% (blocks #{{ backfill.status.stop }}–#{{ backfill.status.top - 1 }}){% endif %}
-  {% if backfill.status.throttled %} · slowed by archive node rate limit{% endif %}
-  {% if backfill.status.oldest_time %} · reached {{ backfill.status.oldest_time|dt }} UTC{% endif %}
-  {% if backfill.status.error %} · <span class="err">{{ backfill.status.error }}</span>{% endif %}
-</section>
+<script>
+  // Refresh the sync card in place.
+  setInterval(async () => {
+    try {
+      const resp = await fetch("/sync", { headers: { Accept: "text/html" } });
+      if (resp.ok && !resp.redirected) document.getElementById("sync").outerHTML = await resp.text();
+    } catch (_) {}
+  }, 10000);
+</script>
 {% endblock %}
