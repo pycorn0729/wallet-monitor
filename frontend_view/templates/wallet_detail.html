@@ -17,9 +17,9 @@
 </section>
 
 <div class="actions">
-  {% if can_manage %}<button class="primary" data-dialog="edit-wallet">✎ Edit wallet</button>{% endif %}
+  {% if wallet.owner_id == user.id %}<button class="primary" data-dialog="edit-wallet">✎ Edit wallet</button>{% endif %}
   <form method="post" action="/wallets/{{ wallet.id }}/refresh" class="inline"><button>↻ Refresh balance</button></form>
-  {% if can_manage and taostats_enabled %}
+  {% if wallet.owner_id == user.id and taostats_enabled %}
   <form method="post" action="/wallets/{{ wallet.id }}/import" class="inline"><button title="Backfill past transfers from Taostats">⇣ Import history</button></form>
   {% endif %}
 </div>
@@ -38,7 +38,7 @@
 </section>
 {% endif %}
 
-{% if can_manage %}
+{% if wallet.owner_id == user.id %}
 <dialog id="edit-wallet" class="modal" aria-labelledby="edit-wallet-title">
   <div class="modal-head">
     <h2 id="edit-wallet-title">Edit wallet</h2>
