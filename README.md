@@ -13,7 +13,7 @@ A FastAPI/uvicorn web app that monitors Bittensor wallets for fund movements: TA
   A user can be an admin, an approver, both, or neither.
 - **Wallets.** Each wallet has a name, a coldkey address, an owner and a usage purpose. Owners can add, edit and remove their own wallets.
 - **Dashboard.**
-  - Total balance of all registered wallets (free + staked, with stake valued in TAO at current subnet prices).
+  - Total balance of all registered wallets (free + staked, with stake valued at what unstaking would pay out now).
   - Totals per owner.
   - The largest wallets.
   - Recent transfers.
@@ -76,7 +76,7 @@ Run a single uvicorn worker. The background tasks run inside the app process, so
 ## Notes
 
 - **Stake transfer amounts.** The amount in `StakeTransferred` is the TAO value moved. The alpha amount comes from the `transfer_stake` call. If the call was wrapped in a batch or proxy, the alpha amount is left empty.
-- **Staked balance** is the sum of each position's alpha × the current subnet alpha price. This is a spot value; the TAO you would get from unstaking can be lower because of slippage.
+- **Staked balance** is what unstaking would pay out now, from the chain's `sim_swap_alpha_for_tao` (slippage and swap fees included). A wallet's hotkeys on the same subnet are simulated as one swap, since they sell into the same pool. Each wallet is valued on its own: unstaking several wallets on one subnet at once would slip further. The wallet page also shows each position's spot value (alpha × subnet price).
 - **Chain request budget.** Scanning costs about 1.4 requests per block: block hashes are fetched for a whole batch in one call, the runtime version is checked at the batch's two ends rather than per block, and the timestamp, extrinsic hashes and alpha amounts all come from the one raw-block download (made only for blocks that contain a transfer). A balance refresh is a fixed handful of requests whatever the number of wallets: one for all free balances, one for all stake positions, and one price per subnet held.
 - **Database size.** About 3 transfers per block pass the 0.2 τ default, roughly 150k rows a week. That's fine for SQLite.
 - **Taostats API.** The optional history import uses the new Taostats v1 API (`/v1/transfers` and `/v1/subnets/stake-events?is_transfer=true`). The legacy `/api/...` endpoints stop working on 2026-11-09. Responses are cached for `WM_TAOSTATS_CACHE_SECONDS` (default 300) to stay within rate limits.

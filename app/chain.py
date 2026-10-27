@@ -491,6 +491,16 @@ class BalanceRefresher:
         netuids = {int(i["netuid"]) for infos in stakes.values() for i in infos if int(i["stake"]) > 0}
         prices = await self._alpha_prices(substrate, netuids, block_hash)
 
+        # Alpha per (wallet, subnet): unstaking all of a wallet's hotkeys on one subnet sells
+        # into the same pool, so they are simulated as one swap.
+        held: dict[tuple[str, int], int] = {}
+        for address in addresses:
+            for info in stakes.get(address, []):
+                if int(info["stake"]) > 0:
+                    key = (address, int(info["netuid"]))
+                    held[key] = held.get(key, 0) + int(info["stake"])
+        payout = await self._unstake_payouts(substrate, held, block_hash)
+
         updates = {}
         for address in addresses:
             positions, staked = [], 0
@@ -499,7 +509,8 @@ class BalanceRefresher:
                 if alpha <= 0:
                     continue
                 netuid = int(info["netuid"])
-                tao_value = alpha * prices[netuid] // RAO_PER_TAO
+                # This hotkey's share of the subnet's simulated payout.
+                tao_value = payout[(address, netuid)] * alpha // held[(address, netuid)]
                 staked += tao_value
                 positions.append(
                     {
@@ -507,6 +518,7 @@ class BalanceRefresher:
                         "hotkey": ss58.normalize(info["hotkey"]),
                         "alpha": alpha / RAO_PER_TAO,
                         "tao": tao_value / RAO_PER_TAO,
+                        "tao_spot": alpha * prices[netuid] // RAO_PER_TAO / RAO_PER_TAO,
                     }
                 )
             positions.sort(key=lambda p: -p["tao"])
@@ -518,6 +530,26 @@ class BalanceRefresher:
                 wallet.stake_detail = json.dumps(positions)
                 wallet.balance_updated_at = utcnow()
             db.commit()
+
+    async def _unstake_payouts(self, substrate, held: dict[tuple[str, int], int], block_hash: str) -> dict:
+        """RAO of TAO an unstake of each (wallet, subnet) alpha amount would pay out after
+        slippage and fees, from the chain's own swap simulation. Root (netuid 0) is 1:1."""
+        gate = asyncio.Semaphore(10)
+
+        async def one(netuid: int, alpha: int) -> int:
+            if netuid == 0:
+                return alpha
+            async with gate:
+                result = _value(
+                    await substrate.runtime_call(
+                        "SwapRuntimeApi", "sim_swap_alpha_for_tao", [netuid, alpha], block_hash=block_hash
+                    )
+                )
+            return int(result["tao_amount"])
+
+        keys = list(held)
+        results = await asyncio.gather(*(one(netuid, held[(a, netuid)]) for a, netuid in keys))
+        return dict(zip(keys, results))
 
     async def _alpha_prices(self, substrate, netuids: set[int], block_hash: str) -> dict[int, int]:
         """RAO of TAO per 1 alpha for each subnet (root subnet is 1:1), at the pinned block."""

@@ -30,10 +30,11 @@
 <section class="card">
   <h2>Stake positions</h2>
   <table class="data">
-    <thead><tr><th>Subnet</th><th>Hotkey</th><th class="num">Alpha</th><th class="num">≈ TAO</th></tr></thead>
+    <thead><tr><th>Subnet</th><th>Hotkey</th><th class="num">Alpha</th><th class="num" title="TAO an unstake would pay out now, after slippage and fees">TAO if unstaked</th><th class="num" title="Alpha × current subnet price">Spot value</th></tr></thead>
     <tbody>{% for p in positions %}
       <tr><td>SN{{ p.netuid }}</td><td class="mono small nowrap" title="{{ p.hotkey }}">{{ p.hotkey|short }}{{ m.copy(p.hotkey) }}</td>
-        <td class="num mono">{{ p.alpha|tao }}</td><td class="num mono">{{ p.tao|tao }}</td></tr>{% endfor %}
+        <td class="num mono">{{ p.alpha|tao }}</td><td class="num mono">{{ p.tao|tao }}</td>
+        <td class="num mono muted">{% if p.tao_spot is defined %}{{ p.tao_spot|tao }}{% else %}—{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
 </section>
