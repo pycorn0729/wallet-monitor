@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Transfer #{{ t.id }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/transfers">← Transfers</a></p>
+<h1>{{ t.kind_label }}</h1>
+
+<div class="grid2">
+<section class="card">
+  <table class="kv">
+    <tr><th>From</th><td>{{ m.addr(t.from_address, wallets) }} <div class="mono small muted">{{ t.from_address }}{{ m.copy(t.from_address) }}</div></td></tr>
+    <tr><th>To</th><td>{{ m.addr(t.to_address, wallets) }} <div class="mono small muted">{{ t.to_address }}{{ m.copy(t.to_address) }}</div></td></tr>
+    <tr><th>Amount</th><td>{{ m.amount(t) }}</td></tr>
+    {% if t.hotkey %}<tr><th>Hotkey</th><td class="mono small">{{ t.hotkey }}{{ m.copy(t.hotkey) }}</td></tr>{% endif %}
+    <tr><th>Time (UTC)</th><td>{{ t.timestamp|dt }}</td></tr>
+    <tr><th>Block</th><td>#{{ t.block_number }} · event {{ t.event_index }}</td></tr>
+    <tr><th>Extrinsic</th><td class="mono small">{{ t.extrinsic_id or '–' }}
+      {% if t.extrinsic_hash %}<div class="muted">{{ t.extrinsic_hash }}</div>{% endif %}</td></tr>
+    <tr><th>Recorded from</th><td class="small">{{ t.source }} · {{ t.created_at|dt }}</td></tr>
+  </table>
+</section>
+
+</div>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Transfers{% endblock %}
+{% block content %}
+<h1>Transfer history</h1>
+
+<form method="get" class="filters card">
+  <label>Type
+    <select name="kind"><option value="">All</option>
+      {% for k, l in KINDS.items() %}<option value="{{ k }}" {{ 'selected' if filters.kind == k }}>{{ l }}</option>{% endfor %}
+    </select></label>
+  <label>Owner
+    <select name="owner"><option value="">Anyone</option>
+      {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if filters.owner == u.id|string }}>{{ u.username }}</option>{% endfor %}
+    </select></label>
+  <label>Wallet
+    <select name="wallet"><option value="">Any</option>
+      {% for w in all_wallets %}<option value="{{ w.id }}" {{ 'selected' if filters.wallet == w.id|string }}>{{ w.name }}</option>{% endfor %}
+    </select></label>
+  <label>Address <input name="address" value="{{ filters.address }}" class="mono" placeholder="5..."></label>
+  <button class="primary">Filter</button>
+  <a href="/transfers" class="small">reset</a>
+</form>
+
+<p class="muted small">{{ total }} transfer{{ '' if total == 1 else 's' }}</p>
+
+
+<div class="card">{{ m.transfer_table(transfers, wallets, selectable=False) }}</div>
+
+{{ m.pager(pg, "← Newer", "Older →") }}
+{% endblock %}

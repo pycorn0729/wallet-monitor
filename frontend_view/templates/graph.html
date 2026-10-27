@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Connection graph{% endblock %}
+{% block main_class %}container wide{% endblock %}
+{% block head %}<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>{% endblock %}
+{% block content %}
+<h1>Connection graph</h1>
+<form id="graph-form" class="filters card">
+  <label>Center address
+    <input id="address" list="wallet-list" class="mono" value="{{ address }}" placeholder="pick a wallet or paste any SS58 address" size="56" required></label>
+  <datalist id="wallet-list">
+    {% for w in wallets %}<option value="{{ w.address }}">{{ w.name }} ({{ w.owner.username }})</option>{% endfor %}
+  </datalist>
+  <label class="check"><input type="checkbox" id="k-transfer" checked> TAO</label>
+  <label class="check"><input type="checkbox" id="k-stake" checked> Alpha</label>
+  <label>Max transfers <input id="limit" type="number" value="300" min="10" max="2000" class="w-sm"></label>
+  <button class="primary">Load</button>
+  <button type="button" id="clear">Clear</button>
+</form>
+
+<div class="coverage small muted">
+  <span>Data: every transfer ≥ {{ config.min_transfer_tao }} τ on the network, indexed by the app
+    {% if coverage.oldest_block %}from block #{{ coverage.oldest_block }}{% if coverage.oldest_time %} ({{ coverage.oldest_time|dt }} UTC){% endif %} to #{{ coverage.newest_block }}{% endif %}.</span>
+  {% if backfill.status.state != 'done' %}<span>History backfill: <b>{{ backfill.status.state }}</b>{% if backfill.progress is not none %} {{ (backfill.progress * 100)|round(1) }}%{% endif %}</span>{% endif %}
+</div>
+<p class="small muted">Double-click a node to expand its connections, and again to collapse them (or use the buttons in the side panel).
+  <span class="legend"><i class="lg tao"></i>TAO <i class="lg alpha"></i>Alpha <i class="lg reg"></i>registered wallet <i class="lg ext"></i>other</span></p>
+
+<div class="graph-layout">
+  <div class="graph-wrap card">
+    {# vis-network replaces the contents of #graph, so overlays live beside it. #}
+    <div id="graph"></div>
+    <div id="graph-msg" class="muted center">Pick a wallet or enter an address, then press Load.</div>
+    <div id="graph-busy" class="graph-busy" hidden><span class="spinner lg" aria-hidden="true"></span><span id="graph-busy-text">Loading…</span></div>
+  </div>
+  <aside id="panel" class="card"><p class="muted">Click a node or an edge for details.</p></aside>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/graph.js"></script>{% endblock %}

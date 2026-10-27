@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Wallets{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Wallets</h1>
+  <button class="primary" data-dialog="add-wallet">+ Register wallet</button>
+</div>
+
+<form method="get" class="filters card">
+  <label>Owner
+    <select name="owner">
+      <option value="">All users</option>
+      {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if filters.owner == u.id|string }}>{{ u.username }}</option>{% endfor %}
+    </select></label>
+  <label>Total balance &gt;
+    <input name="min_balance" type="number" step="any" min="0" value="{{ filters.min_balance }}" placeholder="e.g. 100" class="w-sm"></label>
+  <label>≤ <input name="max_balance" type="number" step="any" min="0" value="{{ filters.max_balance }}" placeholder="any" class="w-sm"></label>
+  <label>Search <input name="q" value="{{ filters.q }}" placeholder="name, address, purpose"></label>
+  <label>Sort
+    <select name="sort">
+      {% for v, l in [('total','Balance'),('name','Name'),('owner','Owner'),('created','Newest')] %}
+      <option value="{{ v }}" {{ 'selected' if filters.sort == v }}>{{ l }}</option>{% endfor %}
+    </select></label>
+  <div class="quick">
+    <span class="small muted">Quick:</span>
+    {% for v in ['1', '10', '100', '1000'] %}<a class="chip {{ 'on' if filters.min_balance == v }}" href="?owner={{ filters.owner }}&min_balance={{ v }}&q={{ filters.q }}&sort={{ filters.sort }}">&gt; {{ v }} τ</a>{% endfor %}
+  </div>
+  <button class="primary">Filter</button>
+  <a href="/wallets" class="small">reset</a>
+</form>
+
+<section class="stats">
+  <div class="stat big"><div class="label">Total of {{ wallets|length }} listed wallet{{ '' if wallets|length == 1 else 's' }}</div><div class="value">{{ filtered_total|tao }} τ</div></div>
+  <div class="stat"><div class="label">Free</div><div class="value">{{ filtered_free|tao }} τ</div></div>
+  <div class="stat"><div class="label">Staked</div><div class="value">{{ filtered_staked|tao }} τ</div></div>
+</section>
+
+<div class="table-wrap card">
+<table class="data">
+  <thead><tr><th>Name</th><th>Address</th><th>Owner</th><th>Purpose</th><th class="num">Free <span class="unit">τ</span></th><th class="num">Staked <span class="unit">τ</span></th><th class="num">Total <span class="unit">τ</span></th><th></th></tr></thead>
+  <tbody>
+  {% for w in wallets %}
+    <tr>
+      <td><a href="/wallets/{{ w.id }}"><b>{{ w.name }}</b></a></td>
+      <td class="mono small nowrap" title="{{ w.address }}">{{ w.address|short }}{{ m.copy(w.address) }}</td>
+      <td>{{ w.owner.username }}</td>
+      <td class="small clip" title="{{ w.purpose }}">{{ w.purpose }}</td>
+      <td class="num mono">{{ w.free|tao }}</td>
+      <td class="num mono">{{ w.staked|tao }}</td>
+      <td class="num mono"><b>{{ w.total|tao }}</b></td>
+      <td class="nowrap small"><a href="/graph?address={{ w.address }}">graph</a></td>
+    </tr>
+  {% else %}<tr><td colspan="8" class="muted center">{% if filters.q or filters.owner or filters.min_balance or filters.max_balance %}No wallets match.{% else %}No wallets yet. <button class="link" data-dialog="add-wallet">Register the first one</button>{% endif %}</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+
+<dialog id="add-wallet" class="modal" aria-labelledby="add-wallet-title">
+  <form method="post" action="/wallets" class="stack">
+    <div class="modal-head">
+      <h2 id="add-wallet-title">Register a wallet</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Close">×</button>
+    </div>
+    <label>Name <input name="name" required maxlength="128" placeholder="e.g. Treasury cold" autofocus></label>
+    <label>Coldkey address (SS58) <input name="address" required class="mono" placeholder="5..."></label>
+    <label>Usage purpose <textarea name="purpose" rows="3" placeholder="What is this wallet used for?"></textarea></label>
+    {% if user.is_admin %}
+    <label>Owner
+      <select name="owner_id">{% for u in users %}<option value="{{ u.id }}" {{ 'selected' if u.id == user.id }}>{{ u.username }}</option>{% endfor %}</select></label>
+    {% endif %}
+    <p class="small muted">The chain watcher records transfers from now on.{% if taostats_enabled %} Use “Import history” on the wallet page to backfill older ones from Taostats.{% endif %}</p>
+    <div class="modal-foot">
+      <button type="button" data-close>Cancel</button>
+      <button class="primary">Add wallet</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

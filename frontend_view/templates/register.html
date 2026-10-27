@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Register{% endblock %}
+{% block main_class %}login-wrap{% endblock %}
+{% block content %}
+<form method="post" action="/register" class="card login">
+  <div class="login-head"><span class="logo lg">τ</span><h1>Create an account</h1></div>
+  <p class="muted small">You can sign in once an admin approves your account.</p>
+  <label>Username <input name="username" value="{{ username or '' }}" autocomplete="username" required minlength="3" maxlength="64" pattern="[A-Za-z0-9_.\-]+" autofocus></label>
+  <label>Password <input name="password" type="password" autocomplete="new-password" required minlength="8"></label>
+  <label>Repeat password <input name="confirm" type="password" autocomplete="new-password" required minlength="8"></label>
+  <button class="primary">Register</button>
+  <p class="small muted center">Already have an account? <a href="/login">Sign in</a></p>
+</form>
+{% endblock %}

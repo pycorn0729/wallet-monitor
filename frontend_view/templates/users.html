@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<h1>Users</h1>
+{% if pending %}
+<div class="card">
+  <h2>Waiting for approval <span class="badge warn">{{ pending|length }}</span></h2>
+  <table class="data">
+    <thead><tr><th>Username</th><th>Registered (UTC)</th><th>Grant roles</th><th></th></tr></thead>
+    <tbody>
+    {% for u in pending %}
+      <tr>
+        <td><b>{{ u.username }}</b></td>
+        <td>{{ u.created_at|dt }}</td>
+        <td>
+          <form method="post" action="/users/{{ u.id }}/approve" id="a{{ u.id }}"></form>
+          <label class="check"><input type="checkbox" name="is_admin" value="true" form="a{{ u.id }}"> Admin</label>
+        </td>
+        <td class="nowrap">
+          <button form="a{{ u.id }}" class="primary">Approve</button>
+          <form method="post" action="/users/{{ u.id }}/reject" class="inline" onsubmit="return confirm('Reject and delete {{ u.username }}?')"><button class="danger">Reject</button></form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<p class="muted small">Anyone can register at <code>/register</code>, but only accounts approved here can sign in. <b>admins</b> manage users and every wallet.</p>
+<div class="card table-wrap">
+<table class="data">
+  <thead><tr><th>Username</th><th>Wallets</th><th>Admin</th><th>Active</th><th>Reset password</th><th></th><th></th></tr></thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <form method="post" action="/users/{{ u.id }}" id="u{{ u.id }}"></form>
+      <td><b>{{ u.username }}</b></td>
+      <td><a href="/wallets?owner={{ u.id }}">{{ u.wallets|length }}</a></td>
+      <td><input type="checkbox" name="is_admin" value="true" form="u{{ u.id }}" {{ 'checked' if u.is_admin }}></td>
+      {# Not shown, but sent so saving a user keeps the approver role the main site uses. #}
+      {% if u.is_approver %}<input type="hidden" name="is_approver" value="true" form="u{{ u.id }}">{% endif %}
+      <td><input type="checkbox" name="is_active" value="true" form="u{{ u.id }}" {{ 'checked' if u.is_active }}></td>
+      <td><input type="password" name="password" form="u{{ u.id }}" placeholder="leave empty" autocomplete="new-password" class="w-sm"></td>
+      <td><button form="u{{ u.id }}">Save</button></td>
+      <td>{% if u.id != user.id %}<form method="post" action="/users/{{ u.id }}/delete" onsubmit="return confirm('Delete {{ u.username }}?')"><button class="danger link">delete</button></form>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

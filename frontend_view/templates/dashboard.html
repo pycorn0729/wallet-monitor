@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<section class="stats">
+  <div class="stat big"><div class="label">Total balance (all wallets)</div><div class="value">{{ total|tao }} τ</div>
+    <div class="small muted">{{ wallet_count }} wallet{{ '' if wallet_count == 1 else 's' }}</div></div>
+  <div class="stat"><div class="label">Free</div><div class="value">{{ total_free|tao }} τ</div></div>
+  <div class="stat"><div class="label">Staked (TAO value)</div><div class="value">{{ total_staked|tao }} τ</div></div>
+</section>
+
+
+<div class="grid2">
+  <section class="card">
+    <h2>By owner</h2>
+    <table class="data">
+      <thead><tr><th>Owner</th><th class="num">Wallets</th><th class="num">Free <span class="unit">τ</span></th><th class="num">Staked <span class="unit">τ</span></th><th class="num">Total <span class="unit">τ</span></th></tr></thead>
+      <tbody>
+      {% for row in per_owner %}
+        <tr>
+          <td><a href="/wallets?owner={{ row.user.id }}">{{ row.user.username }}</a></td>
+          <td class="num">{{ row.wallets }}</td>
+          <td class="num mono">{{ row.free|tao }}</td>
+          <td class="num mono">{{ row.staked|tao }}</td>
+          <td class="num mono"><b>{{ row.total|tao }}</b></td>
+        </tr>
+      {% else %}<tr><td colspan="5" class="muted center">No wallets yet — <a href="/wallets">add one</a>.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Largest wallets</h2>
+    <table class="data">
+      <thead><tr><th>Wallet</th><th>Owner</th><th class="num">Total <span class="unit">τ</span></th></tr></thead>
+      <tbody>
+      {% for w in top_wallets %}
+        <tr><td><a href="/wallets/{{ w.id }}">{{ w.name }}</a>{{ m.copy(w.address) }}</td><td>{{ w.owner.username }}</td>
+          <td class="num mono">{{ w.total|tao }}</td></tr>
+      {% else %}<tr><td colspan="4" class="muted center">—</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Recent transfers <a class="small" href="/transfers">all →</a></h2>
+  {{ m.transfer_table(recent, wallets) }}
+</section>
+
+<script>
+  // Refresh the sync card in place.
+  setInterval(async () => {
+    try {
+      const resp = await fetch("/sync", { headers: { Accept: "text/html" } });
+      if (resp.ok && !resp.redirected) document.getElementById("sync").outerHTML = await resp.text();
+    } catch (_) {}
+  }, 10000);
+</script>
+{% endblock %}
