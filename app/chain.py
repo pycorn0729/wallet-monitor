@@ -31,6 +31,7 @@ LAST_BLOCK_KEY = "watcher.last_block"
 BACKFILL_TOP_KEY = "backfill.top"  # block the backfill started below
 BACKFILL_NEXT_KEY = "backfill.next"  # next block to scan (walking down)
 BLOCKS_PER_DAY = 7200  # 12 s blocks
+LIVE_STATE_BLOCKS = 200  # non-archive nodes keep only the last ~256 blocks of state
 
 
 def _value(obj):
@@ -221,7 +222,7 @@ async def _finalized_head(substrate) -> int:
 class ChainWatcher:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.status: dict = {"state": "starting", "last_block": None, "head": None, "error": None}
+        self.status: dict = {"state": "starting", "last_block": None, "head": None, "error": None, "checked_at": None}
 
     async def run(self):
         while True:
@@ -239,8 +240,10 @@ class ChainWatcher:
                 await asyncio.sleep(15)
 
     async def _sync(self, substrate):
-        head = await _finalized_head(substrate)
-        self.status["head"] = head
+        # The node connection can go quiet without erroring; time out so run() reconnects.
+        timeout = self.settings.rpc_timeout_seconds
+        head = await asyncio.wait_for(_finalized_head(substrate), timeout)
+        self.status.update(head=head, checked_at=time.time())
 
         with SessionLocal() as db:
             stored = kv_get(db, LAST_BLOCK_KEY)
@@ -251,19 +254,51 @@ class ChainWatcher:
         else:
             last = head - 1
 
+        if head - last > LIVE_STATE_BLOCKS:
+            # The live node has already pruned that state; fill the gap from the archive node.
+            last = await self._catch_up_from_archive(last, head - LIVE_STATE_BLOCKS // 2, head)
+
         while last < head:
             end = min(head, last + self.settings.watcher_batch_size)
-            rows = await scan_range(
-                substrate, range(last + 1, end + 1), self.settings.min_transfer_rao, self.settings.watcher_concurrency
+            rows = await asyncio.wait_for(
+                scan_range(
+                    substrate, range(last + 1, end + 1), self.settings.min_transfer_rao, self.settings.watcher_concurrency
+                ),
+                timeout,
             )
-            added = await asyncio.to_thread(_store, rows)
-            with SessionLocal() as db:
-                kv_set(db, LAST_BLOCK_KEY, end)
-                db.commit()
-            if added:
-                log.info("stored %d new transfer(s) up to block %d", added, end)
-            last = end
-            self.status.update(last_block=last, state="syncing" if last < head else "live")
+            last = await self._commit(rows, end, head)
+
+    async def _commit(self, rows: list[dict], end: int, head: int) -> int:
+        added = await asyncio.to_thread(_store, rows)
+        with SessionLocal() as db:
+            kv_set(db, LAST_BLOCK_KEY, end)
+            db.commit()
+        if added:
+            log.info("stored %d new transfer(s) up to block %d", added, end)
+        self.status.update(last_block=end, state="syncing" if end < head else "live", checked_at=time.time())
+        return end
+
+    async def _catch_up_from_archive(self, last: int, target: int, head: int) -> int:
+        log.info("watcher is %d blocks behind; catching up from the archive node", head - last)
+        parallel = self.settings.watcher_concurrency
+        async with AsyncSubstrateInterface(self.settings.archive_url, ss58_format=42) as archive:
+            while last < target:
+                end = min(target, last + self.settings.watcher_batch_size)
+                try:
+                    rows = await asyncio.wait_for(
+                        scan_range(archive, range(last + 1, end + 1), self.settings.min_transfer_rao, parallel),
+                        self.settings.rpc_timeout_seconds,
+                    )
+                except SubstrateRequestException as e:
+                    if "rate limit" not in str(e).lower():
+                        raise
+                    parallel = max(1, parallel // 2)
+                    log.warning("archive node rate limit during catch-up; retrying with %d parallel blocks", parallel)
+                    self.status["checked_at"] = time.time()  # throttled, not stalled
+                    await asyncio.sleep(20)
+                    continue
+                last = await self._commit(rows, end, head)
+        return last
 
 
 class HistoryBackfill:
@@ -364,6 +399,11 @@ def sync_summary(watcher: ChainWatcher, backfill: HistoryBackfill) -> dict:
     w, b = watcher.status, backfill.status
     head, last = w["head"], w["last_block"]
     behind = max(0, head - last) if head is not None and last is not None else None
+    # No progress for a while means the watcher is stuck, whatever the stale head says.
+    s = watcher.settings
+    stalled = w["checked_at"] is not None and time.time() - w["checked_at"] > s.rpc_timeout_seconds + 4 * s.watcher_poll_seconds + 60
+    if stalled:
+        behind = None
 
     total = done = left = eta = None
     if b["top"] is not None and b["stop"] is not None and b["next"] is not None:
@@ -381,7 +421,8 @@ def sync_summary(watcher: ChainWatcher, backfill: HistoryBackfill) -> dict:
     # Target: the whole backfill window up to the current finalized head.
     target = head - b["stop"] + 1 if head is not None and b["stop"] is not None else None
     return {
-        "live": {**w, "behind": behind},
+        "live": {**w, "behind": behind, "stalled": stalled,
+                 "checked_ago": time.time() - w["checked_at"] if w["checked_at"] else None},
         "backfill": {**b, "progress": backfill.progress, "total": total, "done": done, "left": left, "eta": eta},
         "coverage": {"low": low, "high": high, "blocks": covered,
                      "days": covered / BLOCKS_PER_DAY if covered is not None else None,
@@ -407,7 +448,7 @@ class BalanceRefresher:
             try:
                 async with AsyncSubstrateInterface(self.settings.subtensor_url, ss58_format=42) as substrate:
                     while True:
-                        await self.refresh_all(substrate)
+                        await asyncio.wait_for(self.refresh_all(substrate), self.settings.rpc_timeout_seconds)
                         self.status.update(state="ok", last_run=utcnow(), error=None)
                         try:
                             await asyncio.wait_for(self._wake.wait(), self.settings.balance_refresh_seconds)

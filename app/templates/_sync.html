@@ -16,7 +16,8 @@
   <div class="sync-row">
     <div class="sync-head">
       <b>Live</b>
-      {% if live.state == "error" %}<span class="badge err">error</span>
+      {% if live.stalled %}<span class="badge err">stalled</span>
+      {% elif live.state == "error" %}<span class="badge err">error</span>
       {% elif live.behind == 0 %}<span class="badge ok">up to date</span>
       {% elif live.behind is not none %}<span class="badge warn">catching up</span>
       {% else %}<span class="badge">{{ live.state }}</span>{% endif %}
@@ -24,6 +25,7 @@
         {% if live.last_block is not none %}scanned to #{{ "{:,}".format(live.last_block) }}{% endif %}
         {% if live.head is not none %} · finalized head #{{ "{:,}".format(live.head) }}{% endif %}
         {% if live.behind %} · {{ "{:,}".format(live.behind) }} blocks behind (≈ {{ duration(live.behind * 12) }}){% endif %}
+        {% if live.stalled %} · no progress for {{ duration(live.checked_ago) }}, reconnecting{% endif %}
       </span>
     </div>
     {% if live.error %}<div class="small err">{{ live.error }}</div>{% endif %}

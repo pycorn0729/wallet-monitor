@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     watcher_poll_seconds: int = 6
     watcher_batch_size: int = 20
     watcher_concurrency: int = 5  # blocks fetched at once while catching up
+    rpc_timeout_seconds: int = 120  # a node call that hangs longer than this forces a reconnect
 
     # How far back the one-off history backfill scans (7200 blocks ≈ 1 day).
     backfill_days: int = 7
