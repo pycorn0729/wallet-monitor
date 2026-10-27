@@ -38,12 +38,6 @@
 </section>
 {% endif %}
 
-<section class="card">
-  <h2>Transfers <span class="small muted">({{ "{:,}".format(pg.total) }})</span></h2>
-  {{ m.transfer_table(transfers, wallets, focus=wallet.address) }}
-  {{ m.pager(pg, "← Newer", "Older →") }}
-</section>
-
 {% if can_manage %}
 <dialog id="edit-wallet" class="modal" aria-labelledby="edit-wallet-title">
   <div class="modal-head">
