@@ -9,7 +9,8 @@
 <section class="card narrow">
   <h2>Sync a range</h2>
   <form method="post" action="/chain-sync/jobs" class="stack" id="range-form"
-        {% if anchor %}data-anchor-block="{{ anchor[0] }}" data-anchor-ms="{{ anchor[1] }}"{% endif %}>
+        {% if anchor %}data-anchor-block="{{ anchor[0] }}" data-anchor-ms="{{ anchor[1] }}"{% endif %}
+        {% if live_block %}data-live-block="{{ live_block }}"{% endif %}>
     <div class="segmented" role="radiogroup" aria-label="Choose the range by">
       <label><input type="radio" name="by" value="date" checked><span>By date</span></label>
       <label><input type="radio" name="by" value="block"><span>By block</span></label>
@@ -19,7 +20,7 @@
         <input type="date" name="start_date" max="{{ today }}" required>
         <span class="small muted hint"></span></label>
       <label>To (UTC, included)
-        <input type="date" name="end_date" max="{{ today }}" required>
+        <input type="date" name="end_date" value="{{ today }}" max="{{ today }}" required>
         <span class="small muted hint"></span></label>
     </fieldset>
     <fieldset class="pair" data-by="block" hidden disabled>
@@ -27,7 +28,7 @@
         <input type="number" name="start_block" min="1" required>
         <span class="small muted hint"></span></label>
       <label>End block
-        <input type="number" name="end_block" min="1" required>
+        <input type="number" name="end_block" min="1" value="{{ live_block or '' }}" required>
         <span class="small muted hint"></span></label>
     </fieldset>
     <p class="small muted">Scanned from the archive node in the background, oldest block first. Days are looked up
@@ -49,21 +50,26 @@
     } catch (_) {}
   }, 10000);
 
+  // The end fields start at now: today and the newest block the live watcher has synced.
   // By date / by block: only the chosen pair of fields is shown and submitted (a disabled
   // fieldset sends nothing). Each field shows an estimate of the other unit, from the newest
   // synced block's time and 12 s blocks; days are resolved exactly when queued.
   const form = document.getElementById("range-form");
   if (form) {
     const anchorBlock = Number(form.dataset.anchorBlock), anchorMs = Number(form.dataset.anchorMs);
+    const liveBlock = Number(form.dataset.liveBlock);
     const DAY = 86400000;
     const blockAt = (ms) => Math.round(anchorBlock - (anchorMs - ms) / 12000);
     const fmtBlock = (n) => "#" + n.toLocaleString("en-US");
     const fmtTime = (ms) => new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
     const estimate = {
       start_date: (v) => "from ≈ block " + fmtBlock(blockAt(Date.parse(v + "T00:00:00Z"))),
-      end_date: (v) => "to ≈ block " + fmtBlock(blockAt(Date.parse(v + "T00:00:00Z") + DAY) - 1),
+      end_date: (v) => {
+        const n = blockAt(Date.parse(v + "T00:00:00Z") + DAY) - 1;
+        return n >= liveBlock ? "to the current block " + fmtBlock(liveBlock) : "to ≈ block " + fmtBlock(n);
+      },
       start_block: (v) => "≈ " + fmtTime(anchorMs - (anchorBlock - Number(v)) * 12000),
-      end_block: (v) => "≈ " + fmtTime(anchorMs - (anchorBlock - Number(v)) * 12000),
+      end_block: (v) => "≈ " + fmtTime(anchorMs - (anchorBlock - Number(v)) * 12000) + (Number(v) === liveBlock ? " (current block)" : ""),
     };
     for (const input of form.querySelectorAll("fieldset input")) {
       const hint = input.parentElement.querySelector(".hint");
