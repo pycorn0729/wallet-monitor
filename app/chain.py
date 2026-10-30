@@ -36,6 +36,8 @@ BLOCK_SECONDS = 12
 BLOCKS_PER_DAY = 7200  # 12 s blocks
 LIVE_STATE_BLOCKS = 200  # non-archive nodes keep only the last ~256 blocks of state
 JOB_POLL_SECONDS = 10  # how often the chain process looks for newly queued range syncs
+REFRESH_REQUEST_KEY = "balances.requested_at"  # when a balance refresh was last asked for (any process)
+REQUEST_POLL_SECONDS = 5  # how often the refresher checks for such a request between scheduled runs
 TIMESTAMP_NOW_KEY = "0xf0c365c3cf59d671eb72da0e7a4113c49f1f0515f462cdcf84e0f1d6045dfcbb"  # storage key of Timestamp.Now
 
 
@@ -630,7 +632,11 @@ class BalanceRefresher:
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def request_refresh(self):
-        """Thread-safe: ask for an immediate refresh (e.g. after a wallet was added)."""
+        """Thread-safe: ask for an immediate refresh (e.g. after a wallet was added). Noted in the
+        database too, since the process serving the page may not be the one running the refresher."""
+        with SessionLocal() as db:
+            kv_set(db, REFRESH_REQUEST_KEY, time.time())
+            db.commit()
         if self._loop:
             self._loop.call_soon_threadsafe(self._wake.set)
 
@@ -640,19 +646,31 @@ class BalanceRefresher:
             try:
                 async with AsyncSubstrateInterface(self.settings.subtensor_url, ss58_format=42) as substrate:
                     while True:
+                        started = time.time()
                         await asyncio.wait_for(self.refresh_all(substrate), self.settings.rpc_timeout_seconds)
                         self.status.update(state="ok", last_run=utcnow(), error=None)
-                        try:
-                            await asyncio.wait_for(self._wake.wait(), self.settings.balance_refresh_seconds)
-                        except asyncio.TimeoutError:
-                            pass
-                        self._wake.clear()
+                        await self._wait(started)
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 log.exception("balance refresher error")
                 self.status.update(state="error", error=str(e))
                 await asyncio.sleep(30)
+
+    async def _wait(self, since: float):
+        """Until the next scheduled refresh, or sooner when one was requested after `since`
+        (a wallet added in this process, or one noted in the database by another)."""
+        deadline = time.monotonic() + self.settings.balance_refresh_seconds
+        while (left := deadline - time.monotonic()) > 0:
+            try:
+                await asyncio.wait_for(self._wake.wait(), min(left, REQUEST_POLL_SECONDS))
+                break
+            except asyncio.TimeoutError:
+                with SessionLocal() as db:
+                    requested = kv_get(db, REFRESH_REQUEST_KEY)
+                if requested is not None and float(requested) > since:
+                    break
+        self._wake.clear()
 
     async def refresh_all(self, substrate):
         """Read every wallet against one pinned block with bulk calls: a handful of RPCs per
