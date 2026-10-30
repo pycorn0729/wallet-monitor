@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Sync{% endblock %}
+{% block content %}
+<h1>Chain sync</h1>
+
+{% include "_chain_sync.html" %}
+
+{% if user.is_admin %}
+<section class="card narrow">
+  <h2>Sync a block range</h2>
+  <form method="post" action="/chain-sync/jobs" class="stack" id="range-form"
+        {% if anchor %}data-anchor-block="{{ anchor[0] }}" data-anchor-ms="{{ anchor[1] }}"{% endif %}>
+    <label>Start block
+      <input type="number" name="start_block" min="1" required>
+      <span class="small muted block-time"></span></label>
+    <label>End block
+      <input type="number" name="end_block" min="1" required>
+      <span class="small muted block-time"></span></label>
+    <p class="small muted">Scanned from the archive node in the background, oldest block first. Blocks that are already
+      synced are skipped, and a restart resumes where it stopped. New blocks are synced by the live watcher.</p>
+    <button class="primary">Queue sync</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Refresh ranges and job progress in place.
+  setInterval(async () => {
+    try {
+      const resp = await fetch("/chain-sync/status", { headers: { Accept: "text/html" } });
+      if (resp.ok && !resp.redirected) document.getElementById("chain-sync").outerHTML = await resp.text();
+    } catch (_) {}
+  }, 10000);
+
+  // Estimated time of the typed block, from the newest synced block's time and 12 s blocks.
+  const form = document.getElementById("range-form");
+  if (form && form.dataset.anchorBlock) {
+    const block = Number(form.dataset.anchorBlock), ms = Number(form.dataset.anchorMs);
+    for (const input of form.querySelectorAll("input[type=number]")) {
+      const hint = input.parentElement.querySelector(".block-time");
+      const show = () => {
+        const n = Number(input.value);
+        hint.textContent = n > 0 ? "≈ " + new Date(ms - (block - n) * 12000).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "";
+      };
+      input.addEventListener("input", show);
+      show();
+    }
+  }
+</script>
+{% endblock %}

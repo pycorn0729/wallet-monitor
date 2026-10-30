@@ -6,7 +6,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
-from .models import KV, AddressLabel, Transfer, Wallet
+from .models import KV, AddressLabel, SyncedRange, Transfer, Wallet
 
 
 def paginate(db: Session, query, page: int, size: int = 50) -> dict:
@@ -29,6 +29,41 @@ def kv_set(db: Session, key: str, value) -> None:
         row.value = str(value)
     else:
         db.add(KV(key=key, value=str(value)))
+
+
+def mark_synced(db: Session, start: int, end: int, start_time=None, end_time=None) -> None:
+    """Record blocks start..end as scanned, merged with the ranges they overlap or touch.
+    The times are those of blocks start and end. Not committed: the caller commits it
+    together with its own progress."""
+    rows = db.scalars(
+        select(SyncedRange).where(SyncedRange.start_block <= end + 1, SyncedRange.end_block >= start - 1)
+    ).all()
+    low, low_time, high, high_time = start, start_time, end, end_time
+    for r in rows:
+        if r.start_block < low or (r.start_block == low and low_time is None):
+            low, low_time = r.start_block, r.start_time
+        if r.end_block > high or (r.end_block == high and high_time is None):
+            high, high_time = r.end_block, r.end_time
+    keep = rows[0] if rows else SyncedRange()
+    for r in rows[1:]:
+        db.delete(r)
+    keep.start_block, keep.start_time, keep.end_block, keep.end_time = low, low_time, high, high_time
+    if not rows:
+        db.add(keep)
+
+
+def unsynced_span(db: Session, start: int, end: int) -> tuple[int, int]:
+    """The first run of blocks within start..end not scanned yet, as (first, last).
+    first > end when all of start..end is already synced."""
+    covering = db.scalar(
+        select(SyncedRange.end_block).where(SyncedRange.start_block <= start, SyncedRange.end_block >= start)
+    )
+    if covering is not None:
+        start = covering + 1  # ranges never touch, so the block after one is unscanned
+    following = db.scalar(
+        select(func.min(SyncedRange.start_block)).where(SyncedRange.start_block > start, SyncedRange.start_block <= end)
+    )
+    return start, following - 1 if following is not None else end
 
 
 def wallet_map(db: Session) -> dict[str, Wallet]:

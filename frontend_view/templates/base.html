@@ -23,6 +23,7 @@
     {{ navlink('/wallets', 'Wallets') }}
     {% call navlink('/transfers', 'Transfers') %}{% endcall %}
     {{ navlink('/graph', 'Graph') }}
+    {{ navlink('/chain-sync', 'Sync') }}
     {% if user.is_admin %}{% call navlink('/users', 'Users') %}{% if nav_pending_users %}<span class="badge warn" title="Registrations waiting for approval">{{ nav_pending_users }}</span>{% endif %}{% endcall %}{% endif %}
   </nav>
   <div class="me">

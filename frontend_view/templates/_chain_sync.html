@@ -1,0 +1,85 @@
+{% macro duration(seconds) -%}
+  {%- set s = seconds|int -%}
+  {%- if s >= 86400 %}{{ s // 86400 }}d {{ (s % 86400) // 3600 }}h
+  {%- elif s >= 3600 %}{{ s // 3600 }}h {{ (s % 3600) // 60 }}m
+  {%- elif s >= 60 %}{{ s // 60 }}m
+  {%- else %}{{ s }}s{% endif -%}
+{%- endmacro %}
+{% macro block(n) %}#{{ "{:,}".format(n) }}{% endmacro %}
+<div id="chain-sync">
+<section class="card sync">
+  <h2>Synced ranges
+    <span class="small muted">{{ "{:,}".format(synced_blocks) }} blocks{% if range_count > 1 %} in {{ range_count }} ranges{% endif %}</span>
+  </h2>
+  {% if rows %}
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Start block</th><th>Start time (UTC)</th><th>End block</th><th>End time (UTC)</th><th class="num">Blocks</th><th class="num">Span</th>{% if user.is_admin %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for row in rows %}
+      {% if row.range %}{% set r = row.range %}
+      <tr>
+        <td class="mono">{{ block(r.start_block) }}</td>
+        <td class="nowrap">{{ r.start_time|dt }}</td>
+        <td class="mono">{{ block(r.end_block) }}{% if r.end_block == live_block %} <span class="badge ok" title="The live watcher extends this range as blocks arrive">live</span>{% endif %}</td>
+        <td class="nowrap">{{ r.end_time|dt }}</td>
+        <td class="num mono">{{ "{:,}".format(r.blocks) }}</td>
+        <td class="num nowrap">{% if r.start_time and r.end_time %}{{ duration((r.end_time - r.start_time).total_seconds()) }}{% else %}≈ {{ duration(r.blocks * 12) }}{% endif %}</td>
+        {% if user.is_admin %}<td></td>{% endif %}
+      </tr>
+      {% else %}{% set low, high = row.gap %}
+      <tr class="gap">
+        <td colspan="4" class="muted">Not synced: {{ block(low) }} – {{ block(high) }}</td>
+        <td class="num mono muted">{{ "{:,}".format(high - low + 1) }}</td>
+        <td class="num nowrap muted">≈ {{ duration((high - low + 1) * 12) }}</td>
+        {% if user.is_admin %}<td class="nowrap">
+          <form method="post" action="/chain-sync/jobs" class="inline">
+            <input type="hidden" name="start_block" value="{{ low }}"><input type="hidden" name="end_block" value="{{ high }}">
+            <button class="small">Sync gap</button>
+          </form>
+        </td>{% endif %}
+      </tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">Nothing synced yet.</p>
+  {% endif %}
+</section>
+
+{% if jobs %}
+<section class="card sync">
+  <h2>Range syncs</h2>
+  <div class="table-wrap">
+  <table class="data">
+    <thead><tr><th>Blocks</th><th>Status</th><th>Progress</th><th class="num">New transfers</th><th>Requested</th>{% if user.is_admin %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for j in jobs %}
+      <tr>
+        <td class="mono nowrap">{{ block(j.start_block) }} – {{ block(j.end_block) }}<div class="small muted">{{ "{:,}".format(j.blocks) }} blocks</div></td>
+        <td>
+          {% if j.state == "done" %}<span class="badge ok">done</span>
+          {% elif j.state == "error" %}<span class="badge err">error</span>
+          {% elif j.state == "running" and j.error %}<span class="badge warn">retrying</span>
+          {% else %}<span class="badge">{{ j.state }}</span>{% endif %}
+          {% if j.error %}<div class="small err">{{ j.error }}</div>{% endif %}
+        </td>
+        <td style="min-width: 150px">
+          <div class="meter"><span class="{{ 'ok' if j.state == 'done' else '' }}" style="width: {{ (j.progress * 100)|round(1) }}%"></span></div>
+          <div class="small muted">{{ (j.progress * 100)|round(1) }}%{% if j.state == "running" %} · at {{ block(j.next_block) }}{% endif %}</div>
+        </td>
+        <td class="num mono">{{ "{:,}".format(j.found) }}</td>
+        <td class="small nowrap">{{ j.created_by.username if j.created_by else "–" }}<div class="muted">{{ j.created_at|dt }}</div></td>
+        {% if user.is_admin %}<td>{% if j.state in job_active %}
+          <form method="post" action="/chain-sync/jobs/{{ j.id }}/cancel" class="inline" onsubmit="return confirm('Cancel this sync? Blocks scanned so far stay synced.')"><button class="small danger">Cancel</button></form>
+        {% endif %}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+</div>

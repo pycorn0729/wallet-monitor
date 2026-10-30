@@ -20,6 +20,8 @@ KIND_TRANSFER = "transfer"  # Balances.Transfer (free TAO)
 KIND_STAKE_TRANSFER = "stake_transfer"  # SubtensorModule.StakeTransferred (alpha)
 KINDS = {KIND_TRANSFER: "TAO transfer", KIND_STAKE_TRANSFER: "Alpha (stake) transfer"}
 
+JOB_ACTIVE = ("queued", "running")  # SyncJob states the chain process still works on
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -177,3 +179,51 @@ class KV(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text)
+
+
+class SyncedRange(Base):
+    """A run of consecutive blocks whose transfers are in the database. Ranges that overlap
+    or touch are merged when recorded, so rows never overlap and the gaps between them are
+    blocks nobody has scanned."""
+
+    __tablename__ = "synced_ranges"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    start_block: Mapped[int] = mapped_column(Integer, index=True)
+    end_block: Mapped[int] = mapped_column(Integer, index=True)
+    # Block times (UTC) of the two ends; None until the chain process has looked them up.
+    start_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    @property
+    def blocks(self) -> int:
+        return self.end_block - self.start_block + 1
+
+
+class SyncJob(Base):
+    """A block range an admin asked to scan from the archive node. The chain process works
+    through active jobs oldest first and keeps their progress here, so any process can show
+    it and a restart resumes where it stopped."""
+
+    __tablename__ = "sync_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    start_block: Mapped[int] = mapped_column(Integer)
+    end_block: Mapped[int] = mapped_column(Integer)
+    next_block: Mapped[int] = mapped_column(Integer)  # first block not scanned yet (walking up)
+    state: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # queued | running | done | error | cancelled
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    found: Mapped[int] = mapped_column(Integer, default=0)  # new transfers stored
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_by: Mapped[User | None] = relationship()
+
+    @property
+    def blocks(self) -> int:
+        return self.end_block - self.start_block + 1
+
+    @property
+    def progress(self) -> float:
+        return min(1.0, (self.next_block - self.start_block) / self.blocks)

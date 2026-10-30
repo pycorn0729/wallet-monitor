@@ -4,6 +4,7 @@
   and SubtensorModule.StakeTransferred event at or above the minimum amount.
 * HistoryBackfill scans the past `backfill_days` once, from an archive node,
   walking backwards from where live syncing started.
+* RangeSync scans block ranges admins queue on the sync page, also from the archive node.
 * BalanceRefresher periodically reads free balance and stake positions
   (valued in TAO at the current subnet alpha price) for every wallet.
 """
@@ -17,13 +18,13 @@ from datetime import datetime, timezone
 
 from async_substrate_interface import AsyncSubstrateInterface
 from async_substrate_interface.errors import SubstrateRequestException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from . import ss58
 from .config import Settings
 from .db import SessionLocal
-from .models import KIND_STAKE_TRANSFER, KIND_TRANSFER, RAO_PER_TAO, Wallet, utcnow
-from .services import kv_get, kv_set, store_transfers
+from .models import JOB_ACTIVE, KIND_STAKE_TRANSFER, KIND_TRANSFER, RAO_PER_TAO, SyncedRange, SyncJob, Wallet, utcnow
+from .services import kv_get, kv_set, mark_synced, store_transfers, unsynced_span
 
 log = logging.getLogger("wallet_monitor.chain")
 
@@ -32,6 +33,7 @@ BACKFILL_TOP_KEY = "backfill.top"  # block the backfill started below
 BACKFILL_NEXT_KEY = "backfill.next"  # next block to scan (walking down)
 BLOCKS_PER_DAY = 7200  # 12 s blocks
 LIVE_STATE_BLOCKS = 200  # non-archive nodes keep only the last ~256 blocks of state
+JOB_POLL_SECONDS = 10  # how often the chain process looks for newly queued range syncs
 
 
 def _value(obj):
@@ -119,6 +121,16 @@ def _inherent_timestamp(raw_extrinsic: str) -> datetime | None:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).replace(tzinfo=None)
 
 
+async def _block_time(substrate, number: int, block_hash: str, runtime=None) -> datetime | None:
+    """Block time from Timestamp.Now (one RPC). None, logged, if the node doesn't answer."""
+    try:
+        ms = _value(await substrate.query("Timestamp", "Now", block_hash=block_hash, runtime=runtime))
+        return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).replace(tzinfo=None)
+    except Exception:
+        log.warning("no timestamp for block %d", number, exc_info=True)
+        return None
+
+
 async def _block_hashes(substrate, numbers: list[int]) -> list[str]:
     """All hashes in one RPC (chain_getBlockHash accepts a list of numbers)."""
     hashes = (await substrate.rpc_request("chain_getBlockHash", [numbers]))["result"]
@@ -167,11 +179,7 @@ async def scan_block(substrate, number: int, block_hash: str, runtime, min_rao: 
     raw_extrinsics = (await substrate.rpc_request("chain_getBlock", [block_hash]))["result"]["block"]["extrinsics"]
     timestamp = _inherent_timestamp(raw_extrinsics[0]) if raw_extrinsics else None
     if timestamp is None:
-        try:
-            ms = _value(await substrate.query("Timestamp", "Now", block_hash=block_hash, runtime=runtime))
-            timestamp = datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).replace(tzinfo=None)
-        except Exception:
-            log.warning("no timestamp for block %d", number, exc_info=True)
+        timestamp = await _block_time(substrate, number, block_hash, runtime)
 
     for row in hits:
         row.update(block_number=number, block_hash=block_hash, timestamp=timestamp, source="chain")
@@ -193,11 +201,12 @@ async def scan_block(substrate, number: int, block_hash: str, runtime, min_rao: 
     return hits
 
 
-async def scan_range(substrate, numbers, min_rao: int, parallel: int) -> list[dict]:
-    """Scan consecutive blocks with at most `parallel` blocks in flight at once."""
+async def scan_range(substrate, numbers, min_rao: int, parallel: int) -> tuple[list[dict], tuple]:
+    """Scan consecutive blocks with at most `parallel` blocks in flight at once. Returns the
+    transfer rows and the times of the first and last block (for the synced ranges)."""
     numbers = list(numbers)
     if not numbers:
-        return []
+        return [], (None, None)
     hashes = await _block_hashes(substrate, numbers)
     runtimes = await _runtimes(substrate, hashes)
     gate = asyncio.Semaphore(parallel)
@@ -206,8 +215,10 @@ async def scan_range(substrate, numbers, min_rao: int, parallel: int) -> list[di
         async with gate:
             return await scan_block(substrate, n, h, rt, min_rao)
 
-    results = await asyncio.gather(*(one(n, h, rt) for n, h, rt in zip(numbers, hashes, runtimes)))
-    return [row for block_rows in results for row in block_rows]
+    blocks = asyncio.gather(*(one(n, h, rt) for n, h, rt in zip(numbers, hashes, runtimes)))
+    ends = asyncio.gather(*(_block_time(substrate, numbers[i], hashes[i], runtimes[i]) for i in sorted({0, len(numbers) - 1})))
+    results, times = await asyncio.gather(blocks, ends)
+    return [row for block_rows in results for row in block_rows], (times[0], times[-1])
 
 
 def _store(rows: list[dict]) -> int:
@@ -260,18 +271,19 @@ class ChainWatcher:
 
         while last < head:
             end = min(head, last + self.settings.watcher_batch_size)
-            rows = await asyncio.wait_for(
+            rows, times = await asyncio.wait_for(
                 scan_range(
                     substrate, range(last + 1, end + 1), self.settings.min_transfer_rao, self.settings.watcher_concurrency
                 ),
                 timeout,
             )
-            last = await self._commit(rows, end, head)
+            last = await self._commit(rows, last + 1, end, times, head)
 
-    async def _commit(self, rows: list[dict], end: int, head: int) -> int:
+    async def _commit(self, rows: list[dict], start: int, end: int, times: tuple, head: int) -> int:
         added = await asyncio.to_thread(_store, rows)
         with SessionLocal() as db:
             kv_set(db, LAST_BLOCK_KEY, end)
+            mark_synced(db, start, end, *times)
             db.commit()
         if added:
             log.info("stored %d new transfer(s) up to block %d", added, end)
@@ -285,7 +297,7 @@ class ChainWatcher:
             while last < target:
                 end = min(target, last + self.settings.watcher_batch_size)
                 try:
-                    rows = await asyncio.wait_for(
+                    rows, times = await asyncio.wait_for(
                         scan_range(archive, range(last + 1, end + 1), self.settings.min_transfer_rao, parallel),
                         self.settings.rpc_timeout_seconds,
                     )
@@ -297,7 +309,7 @@ class ChainWatcher:
                     self.status["checked_at"] = time.time()  # throttled, not stalled
                     await asyncio.sleep(20)
                     continue
-                last = await self._commit(rows, end, head)
+                last = await self._commit(rows, last + 1, end, times, head)
         return last
 
 
@@ -367,7 +379,7 @@ class HistoryBackfill:
         while nxt >= stop:
             low = max(stop, nxt - batch + 1)
             try:
-                rows = await scan_range(substrate, range(low, nxt + 1), self.settings.min_transfer_rao, parallel)
+                rows, times = await scan_range(substrate, range(low, nxt + 1), self.settings.min_transfer_rao, parallel)
             except SubstrateRequestException as e:
                 if "rate limit" not in str(e).lower():
                     raise
@@ -382,16 +394,146 @@ class HistoryBackfill:
                 parallel, calm = min(max_parallel, parallel * 2), 0
                 self.status["throttled"] = parallel if parallel < max_parallel else None
             await asyncio.to_thread(_store, rows)
-            nxt = low - 1
             with SessionLocal() as db:
-                kv_set(db, BACKFILL_NEXT_KEY, nxt)
+                kv_set(db, BACKFILL_NEXT_KEY, low - 1)
+                mark_synced(db, low, nxt, *times)
                 db.commit()
+            nxt = low - 1
             stamps = [r["timestamp"] for r in rows if r.get("timestamp")]
             if stamps:
                 self.status["oldest_time"] = min(stamps)
             self.status["next"] = nxt
         self.status.update(state="done")
         log.info("history backfill finished down to block %d", stop)
+
+
+class RangeSync:
+    """Works through the block ranges admins queue on the sync page (SyncJob rows), oldest
+    first, scanning them from the archive node and skipping blocks already synced. Jobs are
+    picked up from the database, so they can be queued from any process."""
+
+    def __init__(self, settings: Settings):
+        self.settings = settings
+
+    async def run(self):
+        fill_times = True  # at start, for ranges seeded without block times
+        job_id = None
+        while True:
+            try:
+                job_id = _next_job()
+                if job_id is not None or fill_times:
+                    async with AsyncSubstrateInterface(self.settings.archive_url, ss58_format=42) as substrate:
+                        await _fill_missing_times(substrate)
+                        fill_times = False
+                        while job_id is not None:
+                            await self._run_job(substrate, job_id)
+                            job_id = _next_job()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:  # reconnect and resume the job from its saved progress
+                log.exception("range sync error")
+                with SessionLocal() as db:
+                    job = db.get(SyncJob, job_id) if job_id is not None else None
+                    if job and job.state in JOB_ACTIVE:
+                        job.error = str(e) or type(e).__name__
+                        db.commit()
+                await asyncio.sleep(30)
+            await asyncio.sleep(JOB_POLL_SECONDS)
+
+    async def _run_job(self, substrate, job_id: int):
+        head = await _finalized_head(substrate)
+        with SessionLocal() as db:
+            job = db.get(SyncJob, job_id)
+            if job.end_block > head:
+                job.state, job.finished_at = "error", utcnow()
+                job.error = f"End block #{job.end_block:,} is past the finalized head #{head:,}."
+                db.commit()
+                return
+            job.state = "running"
+            db.commit()
+            nxt, end = job.next_block, job.end_block
+        log.info("range sync %d: blocks %d..%d (next %d)", job_id, job.start_block, end, nxt)
+
+        batch = self.settings.backfill_batch_size
+        max_parallel = parallel = self.settings.backfill_concurrency
+        calm = 0
+        while True:
+            with SessionLocal() as db:
+                if db.get(SyncJob, job_id).state != "running":  # cancelled on the sync page
+                    return
+                low, gap_end = unsynced_span(db, nxt, end)
+            if low > end:
+                break
+            high = min(gap_end, low + batch - 1)
+            try:
+                rows, times = await asyncio.wait_for(
+                    scan_range(substrate, range(low, high + 1), self.settings.min_transfer_rao, parallel),
+                    self.settings.rpc_timeout_seconds,
+                )
+            except SubstrateRequestException as e:
+                if "rate limit" not in str(e).lower():
+                    raise
+                parallel, calm = max(1, parallel // 2), 0
+                log.warning("archive node rate limit during range sync; retrying with %d parallel blocks", parallel)
+                await asyncio.sleep(20)
+                continue
+            calm += 1
+            if parallel < max_parallel and calm >= 5:
+                parallel, calm = min(max_parallel, parallel * 2), 0
+            added = await asyncio.to_thread(_store, rows)
+            nxt = high + 1
+            with SessionLocal() as db:
+                mark_synced(db, low, high, *times)
+                job = db.get(SyncJob, job_id)
+                job.next_block, job.found, job.error = nxt, job.found + added, None
+                db.commit()
+
+        with SessionLocal() as db:
+            job = db.get(SyncJob, job_id)
+            if job.state == "running":
+                job.state, job.next_block, job.finished_at, job.error = "done", end + 1, utcnow(), None
+                db.commit()
+        log.info("range sync %d finished", job_id)
+
+
+def _next_job() -> int | None:
+    with SessionLocal() as db:
+        return db.scalar(select(SyncJob.id).where(SyncJob.state.in_(JOB_ACTIVE)).order_by(SyncJob.id).limit(1))
+
+
+async def _fill_missing_times(substrate) -> None:
+    """Look up the block times synced ranges lack (seeded ranges, or a failed lookup)."""
+    with SessionLocal() as db:
+        todo = [
+            (r.id, edge, getattr(r, f"{edge}_block"))
+            for r in db.scalars(
+                select(SyncedRange).where(or_(SyncedRange.start_time.is_(None), SyncedRange.end_time.is_(None)))
+            )
+            for edge in ("start", "end")
+            if getattr(r, f"{edge}_time") is None
+        ]
+    for range_id, edge, number in todo:
+        (block_hash,) = await _block_hashes(substrate, [number])
+        when = await _block_time(substrate, number, block_hash)
+        with SessionLocal() as db:
+            r = db.get(SyncedRange, range_id)
+            # The live range's end moves on while we look; only fill an edge still at that block.
+            if when and r and getattr(r, f"{edge}_block") == number:
+                setattr(r, f"{edge}_time", when)
+                db.commit()
+
+
+def seed_synced_ranges() -> None:
+    """For databases synced before ranges were recorded: record what the live sync and the
+    backfill covered (one run of blocks; RangeSync looks up the block times)."""
+    with SessionLocal() as db:
+        if db.scalar(select(SyncedRange.id).limit(1)) is not None:
+            return
+        last, nxt = kv_get(db, LAST_BLOCK_KEY), kv_get(db, BACKFILL_NEXT_KEY)
+        if last is None or nxt is None or int(nxt) + 1 > int(last):
+            return
+        mark_synced(db, int(nxt) + 1, int(last))
+        db.commit()
 
 
 def sync_summary(watcher: ChainWatcher, backfill: HistoryBackfill) -> dict:
