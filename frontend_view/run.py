@@ -24,6 +24,11 @@ from app.routes import wallets as wallet_routes
 HERE = Path(__file__).parent
 
 
+def _static_url(path: str) -> str:
+    """URL of a static file carrying its modification time, so browsers fetch it again after a change."""
+    return f"/static/{path}?v={int((HERE / 'static' / path).stat().st_mtime)}"
+
+
 def _owner_only(user: User, wallet: Wallet) -> None:
     if wallet.owner_id != user.id:
         raise Forbidden("Only the wallet's owner can change this wallet.")
@@ -33,6 +38,7 @@ def _owner_only(user: User, wallet: Wallet) -> None:
 wallet_routes._check_manage = _owner_only
 
 web.templates.env.loader = FileSystemLoader(str(HERE / "templates"))
+web.templates.env.globals["static_url"] = _static_url
 app.router.routes = [
     Mount("/static", app=StaticFiles(directory=HERE / "static"), name="static")
     if getattr(route, "name", None) == "static"

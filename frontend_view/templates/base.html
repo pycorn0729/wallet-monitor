@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="{{ static_url('app.css') }}">
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -45,10 +45,10 @@
   {% if error %}<div class="toast error" role="alert">{{ error }}</div>{% endif %}
   {% if notice %}<div class="toast success" role="status">{{ notice }}</div>{% endif %}
 </div>
-<script src="/static/toast.js"></script>
-<script src="/static/dialog.js"></script>
-<script src="/static/busy.js"></script>
-<script src="/static/copy.js"></script>
+<script src="{{ static_url('toast.js') }}"></script>
+<script src="{{ static_url('dialog.js') }}"></script>
+<script src="{{ static_url('busy.js') }}"></script>
+<script src="{{ static_url('copy.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
