@@ -1,13 +1,15 @@
 """Which blocks are synced, and scanning a chosen block range from the archive node (admins)."""
 
-from datetime import timezone
+import asyncio
+from datetime import date, datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Form, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import Forbidden, current_user, require_admin
-from ..chain import LAST_BLOCK_KEY
+from ..chain import LAST_BLOCK_KEY, blocks_between
+from ..config import get_settings
 from ..db import get_db
 from ..models import JOB_ACTIVE, SyncedRange, SyncJob, User, utcnow
 from ..services import kv_get, unsynced_span
@@ -34,6 +36,7 @@ def _overview(db: Session) -> dict:
         "live_block": int(live) if live is not None else None,
         "jobs": db.scalars(select(SyncJob).order_by(SyncJob.id.desc()).limit(20)).all(),
         "job_active": JOB_ACTIVE,
+        "today": utcnow().date(),
         "anchor": anchor and (anchor.end_block, int(anchor.end_time.replace(tzinfo=timezone.utc).timestamp() * 1000)),
     }
 
@@ -50,24 +53,56 @@ def sync_status(request: Request, user: User = Depends(current_user), db: Sessio
 
 
 @router.post("/jobs")
-def job_create(
+async def job_create(
     request: Request,
-    start_block: int = Form(...),
-    end_block: int = Form(...),
+    by: str = Form("block"),
+    start_block: int | None = Form(None),
+    end_block: int | None = Form(None),
+    start_date: date | None = Form(None),
+    end_date: date | None = Form(None),
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    live = kv_get(db, LAST_BLOCK_KEY)
-    if start_block < 1 or end_block < start_block:
-        flash(request, "The start block must be at least 1 and the end block not below it.", "error")
-    elif live is not None and start_block > int(live):
-        flash(request, f"Blocks after #{int(live):,} are synced by the live watcher as they arrive.", "error")
-    elif unsynced_span(db, start_block, end_block)[0] > end_block:
-        flash(request, f"Blocks #{start_block:,}–#{end_block:,} are already synced.", "info")
+    if by == "date":
+        if start_date is None or end_date is None or end_date < start_date:
+            flash(request, "Pick a From day and a To day on or after it.", "error")
+            return redirect("/chain-sync")
+        # Whole UTC days, the To day included: its last block is the one before next midnight.
+        start, end = datetime.combine(start_date, time()), datetime.combine(end_date + timedelta(days=1), time())
+        try:
+            start_block, end_block = await asyncio.wait_for(blocks_between(start, end, get_settings().archive_url), 60)
+        except Exception as e:
+            flash(request, f"Couldn't look up the blocks of those days on the archive node: {str(e) or type(e).__name__}", "error")
+            return redirect("/chain-sync")
+        if start_block > end_block:
+            flash(request, "There are no blocks in those days yet.", "error")
+            return redirect("/chain-sync")
     else:
-        db.add(SyncJob(start_block=start_block, end_block=end_block, next_block=start_block, created_by_id=admin.id))
+        start_date = end_date = None
+
+    live = kv_get(db, LAST_BLOCK_KEY)
+    if start_block is None or end_block is None or start_block < 1 or end_block < start_block:
+        flash(request, "The start block must be at least 1 and the end block not below it.", "error")
+        return redirect("/chain-sync")
+    if live is not None and start_block > int(live):
+        flash(request, f"Blocks after #{int(live):,} are synced by the live watcher as they arrive.", "error")
+        return redirect("/chain-sync")
+    if live is not None:
+        end_block = min(end_block, int(live))  # the live watcher syncs the rest
+    what = f"blocks #{start_block:,}–#{end_block:,}"
+    if start_date:
+        what = f"{start_date} – {end_date} (UTC), {what}"
+    if unsynced_span(db, start_block, end_block)[0] > end_block:
+        flash(request, f"Already synced: {what}.", "info")
+    else:
+        db.add(
+            SyncJob(
+                start_block=start_block, end_block=end_block, next_block=start_block,
+                start_date=start_date, end_date=end_date, created_by_id=admin.id,
+            )
+        )
         db.commit()
-        flash(request, f"Queued a sync of blocks #{start_block:,}–#{end_block:,}.", "success")
+        flash(request, f"Queued a sync of {what}.", "success")
     return redirect("/chain-sync")
 
 

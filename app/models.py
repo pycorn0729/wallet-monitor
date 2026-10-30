@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -214,6 +215,9 @@ class SyncJob(Base):
     state: Mapped[str] = mapped_column(String(16), default="queued", index=True)  # queued | running | done | error | cancelled
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     found: Mapped[int] = mapped_column(Integer, default=0)  # new transfers stored
+    # The UTC days asked for, when queued by date (start_block..end_block cover them exactly).
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

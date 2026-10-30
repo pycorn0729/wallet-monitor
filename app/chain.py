@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import time
 from datetime import datetime, timezone
 
@@ -31,9 +32,11 @@ log = logging.getLogger("wallet_monitor.chain")
 LAST_BLOCK_KEY = "watcher.last_block"
 BACKFILL_TOP_KEY = "backfill.top"  # block the backfill started below
 BACKFILL_NEXT_KEY = "backfill.next"  # next block to scan (walking down)
+BLOCK_SECONDS = 12
 BLOCKS_PER_DAY = 7200  # 12 s blocks
 LIVE_STATE_BLOCKS = 200  # non-archive nodes keep only the last ~256 blocks of state
 JOB_POLL_SECONDS = 10  # how often the chain process looks for newly queued range syncs
+TIMESTAMP_NOW_KEY = "0xf0c365c3cf59d671eb72da0e7a4113c49f1f0515f462cdcf84e0f1d6045dfcbb"  # storage key of Timestamp.Now
 
 
 def _value(obj):
@@ -534,6 +537,53 @@ def seed_synced_ranges() -> None:
             return
         mark_synced(db, int(nxt) + 1, int(last))
         db.commit()
+
+
+async def _stored_time(substrate, number: int) -> datetime | None:
+    """Block time read as raw storage: needs no runtime metadata, so it is cheap at any height.
+    None for the genesis block, which has no time."""
+    (block_hash,) = await _block_hashes(substrate, [number])
+    raw = (await substrate.rpc_request("state_getStorage", [TIMESTAMP_NOW_KEY, block_hash]))["result"]
+    if not raw:
+        return None
+    ms = int.from_bytes(bytes.fromhex(raw.removeprefix("0x")), "little")
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).replace(tzinfo=None)
+
+
+async def first_block_at(substrate, when: datetime, head: int) -> int:
+    """First block at or after `when` (UTC), or head + 1 if there is none yet. Interpolation
+    search on block times: blocks are 12 s apart, so it usually needs a handful of lookups.
+    It bisects instead whenever a step fails to halve the window (e.g. across a chain halt)."""
+    hi, t_hi = head, await _stored_time(substrate, head)
+    if t_hi < when:
+        return head + 1
+    lo = t_lo = None  # newest block known to be before `when`
+    bisect = False
+    while lo is None or hi - lo > 1:
+        width = None if lo is None else hi - lo
+        if lo is None:
+            if hi == 1:
+                return 1
+            guess = max(1, hi - max(1, math.ceil((t_hi - when).total_seconds() / BLOCK_SECONDS)))
+        elif bisect:
+            guess = (lo + hi) // 2
+        else:
+            guess = min(hi - 1, max(lo + 1, lo + round((when - t_lo) / (t_hi - t_lo) * (hi - lo))))
+        t = await _stored_time(substrate, guess)
+        if t is not None and t >= when:
+            hi, t_hi = guess, t
+        else:
+            lo, t_lo = guess, t
+        bisect = width is not None and hi - lo > width // 2
+    return hi
+
+
+async def blocks_between(start: datetime, end: datetime, url: str) -> tuple[int, int]:
+    """First and last block from `start` (inclusive) to `end` (exclusive), UTC, looked up on
+    the node at `url`. The first is past the last when no block falls in that time yet."""
+    async with AsyncSubstrateInterface(url, ss58_format=42) as substrate:
+        head = await _finalized_head(substrate)
+        return await first_block_at(substrate, start, head), await first_block_at(substrate, end, head) - 1
 
 
 def sync_summary(watcher: ChainWatcher, backfill: HistoryBackfill) -> dict:

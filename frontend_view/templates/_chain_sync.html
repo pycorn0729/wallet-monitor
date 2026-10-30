@@ -58,7 +58,7 @@
     <tbody>
     {% for j in jobs %}
       <tr>
-        <td class="mono nowrap">{{ block(j.start_block) }} – {{ block(j.end_block) }}<div class="small muted">{{ "{:,}".format(j.blocks) }} blocks</div></td>
+        <td class="mono nowrap">{{ block(j.start_block) }} – {{ block(j.end_block) }}<div class="small muted">{% if j.start_date %}{{ j.start_date }}{% if j.end_date != j.start_date %} – {{ j.end_date }}{% endif %} UTC · {% endif %}{{ "{:,}".format(j.blocks) }} blocks</div></td>
         <td>
           {% if j.state == "done" %}<span class="badge ok">done</span>
           {% elif j.state == "error" %}<span class="badge err">error</span>

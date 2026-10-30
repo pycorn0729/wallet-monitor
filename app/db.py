@@ -53,6 +53,11 @@ def _add_missing_columns():
     if "is_approved" not in existing:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN is_approved BOOLEAN NOT NULL DEFAULT TRUE"))
+    existing = {c["name"] for c in inspect(engine).get_columns("sync_jobs")}
+    with engine.begin() as conn:
+        for column in ("start_date", "end_date"):
+            if column not in existing:
+                conn.execute(text(f"ALTER TABLE sync_jobs ADD COLUMN {column} DATE"))
     # One comment per transfer (tables created before this rule have no constraint).
     with engine.begin() as conn:
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_comment_transfer ON comments (transfer_id)"))
